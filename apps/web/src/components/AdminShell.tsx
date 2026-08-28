@@ -16,6 +16,8 @@ import { SalesPanel } from './SalesPanel';
 import { PosPanel } from './PosPanel';
 import { CashPanel } from './CashPanel';
 import { FoodServicePanel } from './FoodServicePanel';
+import { DeliveryPanel } from './DeliveryPanel';
+import { SalesForceApp } from './SalesForceApp';
 
 export type Section =
   | 'subscription'
@@ -26,9 +28,11 @@ export type Section =
   | 'whatsapp'
   | 'production'
   | 'sales-flow'
+  | 'sales-force'
   | 'pos'
   | 'cash'
   | 'food'
+  | 'delivery'
   | 'purchase-xml'
   | 'customers'
   | 'suppliers'
@@ -58,6 +62,12 @@ export function AdminShell({
         label: 'Vendas',
       },
     user.modules.includes('sales') &&
+      user.permissions.includes('sales.quotes.manage') &&
+      user.permissions.includes('sales.orders.read') && {
+        id: 'sales-force' as const,
+        label: 'Força de Vendas',
+      },
+    user.modules.includes('sales') &&
       user.permissions.includes('sales.pos.use') && {
         id: 'pos' as const,
         label: 'PDV',
@@ -71,6 +81,11 @@ export function AdminShell({
       user.permissions.includes('food.tables.read') && {
         id: 'food' as const,
         label: 'Food Service',
+      },
+    user.modules.includes('logistics') &&
+      user.permissions.includes('logistics.deliveries.read') && {
+        id: 'delivery' as const,
+        label: 'Delivery',
       },
     user.modules.includes('stock') &&
       user.permissions.includes('stock.inventory.read') && {
@@ -192,6 +207,15 @@ export function AdminShell({
               canDiscount={user.permissions.includes('sales.discounts.apply')}
             />
           )}
+          {section === 'sales-force' && (
+            <SalesForceApp
+              canCreateCustomer={user.permissions.includes('master.customers.manage')}
+              canInvoice={
+                user.modules.includes('fiscal') && user.permissions.includes('fiscal.nfe.issue')
+              }
+              offlineScope={`${user.companyId}:${user.branchId}:${user.id}`}
+            />
+          )}
           {section === 'pos' && (
             <PosPanel
               canDiscount={user.permissions.includes('sales.pos.discount')}
@@ -210,6 +234,12 @@ export function AdminShell({
             <FoodServicePanel
               canManage={user.permissions.includes('food.tables.manage')}
               canOperate={user.permissions.includes('food.tabs.operate')}
+            />
+          )}
+          {section === 'delivery' && (
+            <DeliveryPanel
+              canOperate={user.permissions.includes('logistics.deliveries.operate')}
+              canManage={user.permissions.includes('logistics.settings.manage')}
             />
           )}
           {section === 'stock' && (

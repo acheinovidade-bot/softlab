@@ -33,6 +33,14 @@ export const environmentSchema = z
       (value) => (value === '' ? undefined : value),
       z.string().min(16).optional(),
     ),
+    NFE_GATEWAY_URL: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().url().optional(),
+    ),
+    NFE_GATEWAY_TOKEN: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.string().min(16).optional(),
+    ),
   })
   .superRefine((environment, context) => {
     if (
@@ -58,6 +66,12 @@ export const environmentSchema = z
         code: 'custom',
         path: ['NFCE_GATEWAY_TOKEN'],
         message: 'Token obrigatório para o gateway NFC-e',
+      });
+    if (environment.NFE_GATEWAY_URL && !environment.NFE_GATEWAY_TOKEN)
+      context.addIssue({
+        code: 'custom',
+        path: ['NFE_GATEWAY_TOKEN'],
+        message: 'Token obrigatório para o gateway NF-e',
       });
   });
 

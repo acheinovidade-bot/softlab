@@ -2,8 +2,16 @@ import { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
 import type { PosCheckoutResult } from '@erp/contracts';
 import { SaleCompletionDialog, type SaleReceipt } from './SaleCompletionDialog';
+import QRCode from 'qrcode';
 type Overview = {
-  tables: Array<{ id: string; code: string; name: string; capacity: number; status: string }>;
+  tables: Array<{
+    id: string;
+    code: string;
+    name: string;
+    capacity: number;
+    status: string;
+    publicToken: string;
+  }>;
   waiters: Array<{ id: string; name: string }>;
   customers: Array<{ id: string; name: string }>;
   products: Array<{ id: string; code: string; description: string; price: string }>;
@@ -55,6 +63,7 @@ export function FoodServicePanel({
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
   const [paying, setPaying] = useState(false);
+  const [tableQr, setTableQr] = useState<{ name: string; url: string; image: string } | null>(null);
   async function load() {
     try {
       setData(await apiRequest<Overview>('/food/overview'));
@@ -121,6 +130,18 @@ export function FoodServicePanel({
       setError(message(reason));
     } finally {
       setPaying(false);
+    }
+  }
+  async function showTableQr(item: Overview['tables'][number]) {
+    const url = `${window.location.origin}/menu/${item.publicToken}`;
+    try {
+      setTableQr({
+        name: item.name,
+        url,
+        image: await QRCode.toDataURL(url, { width: 420, margin: 2, errorCorrectionLevel: 'H' }),
+      });
+    } catch {
+      setError('Não foi possível gerar o QR Code da mesa');
     }
   }
   return (
@@ -231,6 +252,9 @@ export function FoodServicePanel({
                 <span className={`cash-badge ${table.status === 'occupied' ? 'open' : ''}`}>
                   {table.status === 'occupied' ? 'Ocupada' : 'Livre'}
                 </span>
+                <button className="quiet" onClick={() => void showTableQr(table)}>
+                  QR Code da mesa
+                </button>
               </header>
               <div className="food-tabs">
                 <div>
@@ -386,6 +410,32 @@ export function FoodServicePanel({
         </div>
       )}
       {receipt && <SaleCompletionDialog receipt={receipt} onNext={() => setReceipt(null)} />}
+      {tableQr && (
+        <div
+          className="food-summary-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="table-qr-title"
+        >
+          <article className="table-qr-sheet">
+            <span className="eyebrow">CARDÁPIO DIGITAL</span>
+            <h2 id="table-qr-title">QR Code · {tableQr.name}</h2>
+            <img src={tableQr.image} alt={`QR Code do cardápio da ${tableQr.name}`} />
+            <p>
+              Aponte a câmera para abrir o cardápio e enviar o pedido diretamente para a comanda.
+            </p>
+            <small>{tableQr.url}</small>
+            <div>
+              <button className="quiet" onClick={() => setTableQr(null)}>
+                Fechar
+              </button>
+              <a className="primary" href={tableQr.image} download={`cardapio-${tableQr.name}.png`}>
+                Baixar QR Code
+              </a>
+            </div>
+          </article>
+        </div>
+      )}
     </section>
   );
 }

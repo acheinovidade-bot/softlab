@@ -30,12 +30,25 @@ export class FiscalService {
   }
 
   async issue(auth: AccessTokenPayload, saleId: string) {
+    return this.issueDocument(auth, saleId, 'NFCe', '65');
+  }
+
+  async issueNfe(auth: AccessTokenPayload, saleId: string) {
+    return this.issueDocument(auth, saleId, 'NFe', '55');
+  }
+
+  private async issueDocument(
+    auth: AccessTokenPayload,
+    saleId: string,
+    documentType: 'NFCe' | 'NFe',
+    model: '65' | '55',
+  ) {
     const existing = await this.prisma.fiscalDocument.findFirst({
       where: {
         companyId: auth.companyId,
         branchId: auth.branchId,
         saleId,
-        documentType: 'NFCe',
+        documentType,
         status: 'authorized',
       },
     });
@@ -73,6 +86,24 @@ export class FiscalService {
     ]);
     if (!company || !branch || !order)
       throw new ConflictException('Cadastro da venda incompleto para emissão fiscal');
+    const recipient = order.customerId
+      ? await this.prisma.customer.findFirst({
+          where: { id: order.customerId, companyId: auth.companyId, deletedAt: null },
+        })
+      : null;
+    const recipientAddressLink = recipient
+      ? await this.prisma.customerAddress.findFirst({
+          where: { customerId: recipient.id },
+          orderBy: { isDefault: 'desc' },
+        })
+      : null;
+    const recipientAddress = recipientAddressLink
+      ? await this.prisma.address.findFirst({
+          where: { id: recipientAddressLink.addressId, companyId: auth.companyId },
+        })
+      : null;
+    if (documentType === 'NFe' && (!recipient?.taxId || !recipientAddress))
+      throw new ConflictException('NF-e requer cliente com CPF/CNPJ e endereço completo');
     if (!setting?.certificateSecretReference)
       throw new ConflictException(
         'Configuração fiscal ou referência do certificado não cadastrada para a filial',
@@ -112,6 +143,8 @@ export class FiscalService {
       };
     });
     const payload = {
+      documentType,
+      model,
       environment: setting.environment,
       taxRegime: setting.taxRegime,
       certificateSecretReference: setting.certificateSecretReference,
@@ -122,6 +155,26 @@ export class FiscalService {
         legalName: branch.legalName,
         tradeName: branch.tradeName,
       },
+      recipient: recipient
+        ? {
+            taxId: recipient.taxId,
+            legalName: recipient.legalName,
+            tradeName: recipient.tradeName,
+            email: recipient.email,
+            address: recipientAddress
+              ? {
+                  postalCode: recipientAddress.postalCode,
+                  street: recipientAddress.street,
+                  number: recipientAddress.number,
+                  complement: recipientAddress.complement,
+                  district: recipientAddress.district,
+                  city: recipientAddress.city,
+                  state: recipientAddress.state,
+                  country: recipientAddress.country,
+                }
+              : null,
+          }
+        : null,
       sale: {
         id: sale.id,
         number: sale.number,
@@ -135,7 +188,10 @@ export class FiscalService {
         amount: payment.amount.toString(),
       })),
     };
-    const authorized = await this.gateway.issue(payload, `nfce:${auth.companyId}:${sale.id}`);
+    const authorized =
+      documentType === 'NFe'
+        ? await this.gateway.issueNfe(payload, `nfe:${auth.companyId}:${sale.id}`)
+        : await this.gateway.issue(payload, `nfce:${auth.companyId}:${sale.id}`);
     const now = new Date();
     const created = await this.prisma.$transaction(async (tx) => {
       const fiscal = await tx.fiscalDocument.create({
@@ -145,8 +201,8 @@ export class FiscalService {
           branchId: auth.branchId,
           saleId: sale.id,
           supplierInvoiceId: null,
-          documentType: 'NFCe',
-          model: '65',
+          documentType,
+          model,
           series: authorized.series,
           number: BigInt(authorized.number),
           accessKey: authorized.accessKey,
@@ -155,7 +211,7 @@ export class FiscalService {
           total: sale.total,
           xmlStorageKey: authorized.xmlStorageKey ?? null,
           protocol: authorized.protocol,
-          qrCodeUrl: authorized.qrCodeUrl,
+          qrCodeUrl: authorized.qrCodeUrl ?? null,
           danfePayload: payload as Prisma.InputJsonValue,
           createdAt: now,
           updatedAt: now,

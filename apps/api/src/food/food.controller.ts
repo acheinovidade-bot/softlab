@@ -4,6 +4,7 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
 import { RequireModules } from '../auth/modules.decorator';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { FoodService } from './food.service';
+import { Public } from '../auth/public.decorator';
 @ApiTags('food-service')
 @ApiBearerAuth()
 @Controller('food')
@@ -52,5 +53,21 @@ export class FoodController {
     @Body() body: unknown,
   ) {
     return this.service.checkout(request.auth, id, body);
+  }
+}
+
+@ApiTags('public-digital-menu')
+@Controller('public/menu')
+@Public()
+export class PublicFoodController {
+  constructor(private readonly service: FoodService) {}
+  @Get(':token') menu(@Param('token', ParseUUIDPipe) token: string) {
+    return this.service.publicMenu(token);
+  }
+  @Post(':token/orders') order(
+    @Param('token', ParseUUIDPipe) token: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.publicOrder(token, body);
   }
 }

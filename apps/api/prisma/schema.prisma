@@ -311,6 +311,8 @@ model Address {
   city       String   @db.VarChar(120)
   state      String   @db.Char(2)
   country    String   @db.Char(2)
+  latitude   Decimal? @db.Decimal(10, 7)
+  longitude  Decimal? @db.Decimal(10, 7)
   createdAt  DateTime @map("created_at") @db.Timestamptz
   updatedAt  DateTime @map("updated_at") @db.Timestamptz
 
@@ -1248,10 +1250,12 @@ model FoodTable {
   capacity  Int
   status    String   @db.VarChar(20)
   active    Boolean
+  publicToken String @map("public_token") @db.Uuid
   createdAt DateTime @map("created_at") @db.Timestamptz
   updatedAt DateTime @map("updated_at") @db.Timestamptz
 
   @@unique([companyId, branchId, code])
+  @@unique([publicToken])
   @@unique([id, companyId])
   @@index([companyId, branchId, status], map: "food_tables_branch_status_idx")
   @@map("food_tables")
@@ -1291,7 +1295,7 @@ model FoodTabItem {
   total     Decimal  @db.Decimal(19, 4)
   notes     String?
   status    String   @db.VarChar(20)
-  createdBy String   @map("created_by") @db.Uuid
+  createdBy String?  @map("created_by") @db.Uuid
   createdAt DateTime @map("created_at") @db.Timestamptz
   updatedAt DateTime @map("updated_at") @db.Timestamptz
 
@@ -1365,4 +1369,59 @@ model FiscalDocumentItem {
 
   @@unique([fiscalDocumentId, sequence])
   @@map("fiscal_document_items")
+}
+
+model Driver {
+  id         String   @id @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  employeeId String?  @map("employee_id") @db.Uuid
+  name       String   @db.VarChar(160)
+  phone      String?  @db.VarChar(30)
+  active     Boolean
+  createdAt  DateTime @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([id, companyId])
+  @@index([companyId, active, name], map: "drivers_company_active_name_idx")
+  @@map("drivers")
+}
+
+model DeliveryZone {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  branchId        String   @map("branch_id") @db.Uuid
+  calculationType String   @map("calculation_type") @db.VarChar(20)
+  name            String   @db.VarChar(120)
+  rulePayload     Json     @map("rule_payload")
+  fee             Decimal  @db.Decimal(19, 4)
+  active          Boolean
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, name])
+  @@index([companyId, branchId, active], map: "delivery_zones_branch_active_idx")
+  @@map("delivery_zones")
+}
+
+model Delivery {
+  id          String    @id @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  branchId    String    @map("branch_id") @db.Uuid
+  orderId     String    @map("order_id") @db.Uuid
+  routeId     String?   @map("route_id") @db.Uuid
+  driverId    String?   @map("driver_id") @db.Uuid
+  addressId   String    @map("address_id") @db.Uuid
+  status      String    @db.VarChar(30)
+  fee         Decimal   @db.Decimal(19, 4)
+  distanceKm  Decimal?  @map("distance_km") @db.Decimal(12, 4)
+  promisedAt  DateTime? @map("promised_at") @db.Timestamptz
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz
+  createdAt   DateTime  @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, orderId])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status, promisedAt], map: "deliveries_branch_status_promised_idx")
+  @@index([companyId, driverId, status], map: "deliveries_driver_status_idx")
+  @@map("deliveries")
 }

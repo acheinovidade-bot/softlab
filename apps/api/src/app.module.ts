@@ -20,6 +20,7 @@ import { SalesModule } from './sales/sales.module';
 import { CashModule } from './cash/cash.module';
 import { FoodModule } from './food/food.module';
 import { FiscalModule } from './fiscal/fiscal.module';
+import { DeliveryModule } from './delivery/delivery.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { FiscalModule } from './fiscal/fiscal.module';
     CashModule,
     FoodModule,
     FiscalModule,
+    DeliveryModule,
   ],
   controllers: [HealthController],
   providers: [

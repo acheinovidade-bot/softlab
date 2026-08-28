@@ -21,5 +21,12 @@ if ('serviceWorker' in navigator) {
       event.data.type === 'pos-sync-request'
     )
       window.dispatchEvent(new Event('erp:network-restored'));
+    else if (
+      typeof event.data === 'object' &&
+      event.data !== null &&
+      'type' in event.data &&
+      event.data.type === 'sales-force-sync-request'
+    )
+      window.dispatchEvent(new Event('erp:sales-force-sync'));
   });
 }

@@ -19,3 +19,7 @@ export const nfceGatewayResponseSchema = z.object({
   qrCodeUrl: z.string().url(),
   xmlStorageKey: z.string().min(1).nullable().optional(),
 });
+
+export const nfeGatewayResponseSchema = nfceGatewayResponseSchema.extend({
+  qrCodeUrl: z.string().url().nullable().optional(),
+});

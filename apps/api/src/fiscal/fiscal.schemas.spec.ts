@@ -1,4 +1,8 @@
-import { fiscalSettingSchema, nfceGatewayResponseSchema } from './fiscal.schemas';
+import {
+  fiscalSettingSchema,
+  nfceGatewayResponseSchema,
+  nfeGatewayResponseSchema,
+} from './fiscal.schemas';
 
 describe('fiscal schemas', () => {
   it('accepts an authorized NFC-e response', () => {
@@ -13,6 +17,18 @@ describe('fiscal schemas', () => {
         qrCodeUrl: 'https://sefaz.example/qrcode',
       }).number,
     ).toBe(42);
+  });
+  it('accepts an authorized NF-e response without a consumer QR Code', () => {
+    expect(
+      nfeGatewayResponseSchema.parse({
+        status: 'authorized',
+        accessKey: '2'.repeat(44),
+        protocol: '456',
+        series: 1,
+        number: 43,
+        issuedAt: '2026-08-28T12:00:00Z',
+      }).number,
+    ).toBe(43);
   });
   it('rejects a response that is not authorized', () => {
     expect(() => nfceGatewayResponseSchema.parse({ status: 'rejected' })).toThrow();
