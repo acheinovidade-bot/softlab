@@ -1,0 +1,1368 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SaasPlan {
+  id            String   @id @db.Uuid
+  code          String   @unique @db.VarChar(50)
+  name          String   @db.VarChar(120)
+  price         Decimal  @db.Decimal(19, 4)
+  billingPeriod String   @map("billing_period") @db.VarChar(20)
+  userLimit     Int      @map("user_limit")
+  branchLimit   Int      @map("branch_limit")
+  active        Boolean
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@map("saas_plans")
+}
+
+model SaasModule {
+  id        String   @id @db.Uuid
+  code      String   @unique @db.VarChar(80)
+  name      String   @db.VarChar(120)
+  active    Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@map("saas_modules")
+}
+
+model PlanModule {
+  id        String   @id @db.Uuid
+  planId    String   @map("plan_id") @db.Uuid
+  moduleId  String   @map("module_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([planId, moduleId])
+  @@map("plan_modules")
+}
+
+model Subscription {
+  id                 String    @id @db.Uuid
+  companyId          String    @map("company_id") @db.Uuid
+  planId             String    @map("plan_id") @db.Uuid
+  status             String    @db.VarChar(20)
+  trialEndsAt        DateTime? @map("trial_ends_at") @db.Timestamptz
+  currentPeriodStart DateTime  @map("current_period_start") @db.Timestamptz
+  currentPeriodEnd   DateTime  @map("current_period_end") @db.Timestamptz
+  blockedAt          DateTime? @map("blocked_at") @db.Timestamptz
+  createdAt          DateTime  @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @map("updated_at") @db.Timestamptz
+
+  @@map("subscriptions")
+}
+
+model SubscriptionModule {
+  id             String   @id @db.Uuid
+  subscriptionId String   @map("subscription_id") @db.Uuid
+  moduleId       String   @map("module_id") @db.Uuid
+  enabled        Boolean
+  createdAt      DateTime @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([subscriptionId, moduleId])
+  @@map("subscription_modules")
+}
+
+model Company {
+  id        String    @id @db.Uuid
+  legalName String    @map("legal_name") @db.VarChar(200)
+  tradeName String?   @map("trade_name") @db.VarChar(200)
+  taxId     String    @unique @map("tax_id") @db.VarChar(14)
+  status    String    @db.VarChar(20)
+  timezone  String    @db.VarChar(80)
+  createdAt DateTime  @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@map("companies")
+}
+
+model Branch {
+  id        String    @id @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  code      String    @db.VarChar(40)
+  legalName String    @map("legal_name") @db.VarChar(200)
+  tradeName String?   @map("trade_name") @db.VarChar(200)
+  taxId     String    @map("tax_id") @db.VarChar(14)
+  status    String    @db.VarChar(20)
+  createdAt DateTime  @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, taxId])
+  @@unique([id, companyId])
+  @@map("branches")
+}
+
+model User {
+  id                String    @id @db.Uuid
+  email             String    @unique @db.VarChar(254)
+  passwordHash      String    @map("password_hash") @db.VarChar(255)
+  displayName       String    @map("display_name") @db.VarChar(160)
+  status            String    @db.VarChar(20)
+  passwordChangedAt DateTime? @map("password_changed_at") @db.Timestamptz
+  mfaEnabled        Boolean   @map("mfa_enabled")
+  createdAt         DateTime  @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@map("users")
+}
+
+model CompanyUser {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  status    String   @db.VarChar(20)
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, userId])
+  @@unique([id, companyId])
+  @@map("company_users")
+}
+
+model UserBranch {
+  id            String   @id @db.Uuid
+  companyUserId String   @map("company_user_id") @db.Uuid
+  branchId      String   @map("branch_id") @db.Uuid
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyUserId, branchId])
+  @@map("user_branches")
+}
+
+model Role {
+  id        String    @id @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  code      String    @db.VarChar(80)
+  name      String    @db.VarChar(120)
+  createdAt DateTime  @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@map("roles")
+}
+
+model Permission {
+  id        String   @id @db.Uuid
+  code      String   @unique @db.VarChar(120)
+  resource  String   @db.VarChar(80)
+  action    String   @db.VarChar(40)
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @db.Uuid
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id            String   @id @db.Uuid
+  companyUserId String   @map("company_user_id") @db.Uuid
+  roleId        String   @map("role_id") @db.Uuid
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyUserId, roleId])
+  @@map("user_roles")
+}
+
+model UserPermission {
+  id            String   @id @db.Uuid
+  companyUserId String   @map("company_user_id") @db.Uuid
+  permissionId  String   @map("permission_id") @db.Uuid
+  allowed       Boolean
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyUserId, permissionId])
+  @@map("user_permissions")
+}
+
+model Session {
+  id               String    @id @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  branchId         String    @map("branch_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.VarChar(255)
+  ip               String?   @db.Inet
+  userAgent        String?   @map("user_agent")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt        DateTime  @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @map("updated_at") @db.Timestamptz
+
+  @@map("sessions")
+}
+
+model OutboxEvent {
+  id            String    @id @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  aggregateType String    @map("aggregate_type") @db.VarChar(100)
+  aggregateId   String    @map("aggregate_id") @db.Uuid
+  eventType     String    @map("event_type") @db.VarChar(120)
+  payload       Json
+  occurredAt    DateTime  @map("occurred_at") @db.Timestamptz
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz
+  attempts      Int
+  createdAt     DateTime  @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @map("updated_at") @db.Timestamptz
+
+  @@map("outbox_events")
+}
+
+model PasswordResetToken {
+  id        String    @id @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @map("updated_at") @db.Timestamptz
+
+  @@map("password_reset_tokens")
+}
+
+model AuditLog {
+  id            String   @id @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  branchId      String?  @map("branch_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  action        String   @db.VarChar(80)
+  entityType    String   @map("entity_type") @db.VarChar(100)
+  entityId      String?  @map("entity_id") @db.Uuid
+  beforeData    Json?    @map("before_data")
+  afterData     Json?    @map("after_data")
+  ip            String?  @db.Inet
+  correlationId String?  @map("correlation_id") @db.VarChar(128)
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@map("audit_logs")
+}
+
+model LoginAttempt {
+  id            String   @id @db.Uuid
+  companyId     String?  @map("company_id") @db.Uuid
+  branchId      String?  @map("branch_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  emailHash     String   @map("email_hash") @db.Char(64)
+  success       Boolean
+  failureReason String?  @map("failure_reason") @db.VarChar(60)
+  ip            String?  @db.Inet
+  userAgent     String?  @map("user_agent")
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@map("login_attempts")
+}
+
+model Employee {
+  id        String    @id @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  branchId  String?   @map("branch_id") @db.Uuid
+  userId    String?   @map("user_id") @db.Uuid
+  code      String    @db.VarChar(40)
+  name      String    @db.VarChar(160)
+  taxId     String?   @map("tax_id") @db.VarChar(14)
+  jobTitle  String?   @map("job_title") @db.VarChar(100)
+  active    Boolean
+  createdAt DateTime  @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@map("employees")
+}
+
+model Address {
+  id         String   @id @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  postalCode String?  @map("postal_code") @db.VarChar(8)
+  street     String   @db.VarChar(180)
+  number     String?  @db.VarChar(30)
+  complement String?  @db.VarChar(120)
+  district   String?  @db.VarChar(120)
+  city       String   @db.VarChar(120)
+  state      String   @db.Char(2)
+  country    String   @db.Char(2)
+  createdAt  DateTime @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @map("updated_at") @db.Timestamptz
+
+  @@map("addresses")
+}
+
+model Customer {
+  id          String    @id @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  personType  String    @map("person_type") @db.Char(1)
+  taxId       String?   @map("tax_id") @db.VarChar(14)
+  legalName   String    @map("legal_name") @db.VarChar(200)
+  tradeName   String?   @map("trade_name") @db.VarChar(200)
+  phone       String?   @db.VarChar(30)
+  whatsapp    String?   @db.VarChar(30)
+  email       String?   @db.VarChar(254)
+  creditLimit Decimal   @map("credit_limit") @db.Decimal(19, 4)
+  notes       String?
+  active      Boolean
+  createdAt   DateTime  @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, taxId])
+  @@map("customers")
+}
+
+model CustomerAddress {
+  id         String   @id @db.Uuid
+  customerId String   @map("customer_id") @db.Uuid
+  addressId  String   @map("address_id") @db.Uuid
+  type       String   @db.VarChar(20)
+  isDefault  Boolean  @map("is_default")
+  createdAt  DateTime @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([customerId, addressId, type])
+  @@map("customer_addresses")
+}
+
+model Supplier {
+  id              String    @id @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  taxId           String?   @map("tax_id") @db.VarChar(14)
+  legalName       String    @map("legal_name") @db.VarChar(200)
+  tradeName       String?   @map("trade_name") @db.VarChar(200)
+  email           String?   @db.VarChar(254)
+  phone           String?   @db.VarChar(30)
+  averageLeadDays Int?      @map("average_lead_days")
+  paymentTerms    String?   @map("payment_terms")
+  active          Boolean
+  createdAt       DateTime  @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, taxId])
+  @@map("suppliers")
+}
+
+model SupplierProduct {
+  id                  String   @id @db.Uuid
+  companyId           String   @map("company_id") @db.Uuid
+  supplierId          String   @map("supplier_id") @db.Uuid
+  productId           String   @map("product_id") @db.Uuid
+  supplierCode        String?  @map("supplier_code") @db.VarChar(80)
+  supplierDescription String?  @map("supplier_description") @db.VarChar(240)
+  lastPrice           Decimal? @map("last_price") @db.Decimal(19, 4)
+  createdAt           DateTime @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([supplierId, productId])
+  @@index([companyId, supplierId])
+  @@index([companyId, productId, lastPrice])
+  @@map("supplier_products")
+}
+
+model ProductGroup {
+  id        String    @id @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  name      String    @db.VarChar(120)
+  active    Boolean
+  createdAt DateTime  @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, name])
+  @@map("product_groups")
+}
+
+model ProductCategory {
+  id        String    @id @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  parentId  String?   @map("parent_id") @db.Uuid
+  name      String    @db.VarChar(120)
+  active    Boolean
+  createdAt DateTime  @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, parentId, name])
+  @@map("product_categories")
+}
+
+model Brand {
+  id        String    @id @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  name      String    @db.VarChar(120)
+  active    Boolean
+  createdAt DateTime  @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, name])
+  @@map("brands")
+}
+
+model Unit {
+  id            String   @id @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  code          String   @db.VarChar(12)
+  name          String   @db.VarChar(80)
+  decimalPlaces Int      @map("decimal_places") @db.SmallInt
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@map("units")
+}
+
+model Product {
+  id                  String    @id @db.Uuid
+  companyId           String    @map("company_id") @db.Uuid
+  code                String    @db.VarChar(60)
+  barcode             String?   @db.VarChar(30)
+  description         String    @db.VarChar(240)
+  shortDescription    String?   @map("short_description") @db.VarChar(120)
+  groupId             String?   @map("group_id") @db.Uuid
+  categoryId          String?   @map("category_id") @db.Uuid
+  brandId             String?   @map("brand_id") @db.Uuid
+  unitId              String    @map("unit_id") @db.Uuid
+  reference           String?   @db.VarChar(80)
+  productType         String    @map("product_type") @db.VarChar(20)
+  controlsLot         Boolean   @map("controls_lot")
+  controlsExpiry      Boolean   @map("controls_expiry")
+  allowsNegativeStock Boolean   @map("allows_negative_stock")
+  openPrice           Boolean   @map("open_price")
+  imageStorageKey     String?   @map("image_storage_key")
+  ncm                 String?   @db.VarChar(8)
+  cest                String?   @db.VarChar(7)
+  origin              String?   @db.VarChar(1)
+  cfop                String?   @db.VarChar(4)
+  cst                 String?   @db.VarChar(3)
+  csosn               String?   @db.VarChar(3)
+  taxProfile          Json?     @map("tax_profile")
+  deliveryEnabled     Boolean   @map("delivery_enabled")
+  deliveryName        String?   @map("delivery_name") @db.VarChar(160)
+  deliveryDescription String?   @map("delivery_description")
+  deliveryPrice       Decimal?  @map("delivery_price") @db.Decimal(19, 4)
+  printSector         String?   @map("print_sector") @db.VarChar(40)
+  active              Boolean
+  createdAt           DateTime  @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @map("updated_at") @db.Timestamptz
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([companyId, barcode])
+  @@map("products")
+}
+
+model ProductBranchSetting {
+  id            String   @id @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  branchId      String   @map("branch_id") @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  minimumStock  Decimal  @map("minimum_stock") @db.Decimal(19, 6)
+  maximumStock  Decimal? @map("maximum_stock") @db.Decimal(19, 6)
+  locationLabel String?  @map("location_label") @db.VarChar(100)
+  active        Boolean
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([branchId, productId])
+  @@map("product_branch_settings")
+}
+
+model Warehouse {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(120)
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([branchId, code])
+  @@unique([id, companyId])
+  @@map("warehouses")
+}
+
+model StockLocation {
+  id          String   @id @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  parentId    String?  @map("parent_id") @db.Uuid
+  code        String   @db.VarChar(60)
+  name        String   @db.VarChar(120)
+  createdAt   DateTime @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([warehouseId, code])
+  @@unique([id, companyId])
+  @@map("stock_locations")
+}
+
+model StockLot {
+  id             String    @id @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  productId      String    @map("product_id") @db.Uuid
+  lotNumber      String    @map("lot_number") @db.VarChar(80)
+  manufacturedAt DateTime? @map("manufactured_at") @db.Date
+  expiresAt      DateTime? @map("expires_at") @db.Date
+  sourceType     String?   @map("source_type") @db.VarChar(40)
+  sourceId       String?   @map("source_id") @db.Uuid
+  createdAt      DateTime  @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, productId, lotNumber])
+  @@unique([id, companyId])
+  @@map("stock_lots")
+}
+
+model StockBalance {
+  id               String   @id @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  branchId         String   @map("branch_id") @db.Uuid
+  locationId       String   @map("location_id") @db.Uuid
+  productId        String   @map("product_id") @db.Uuid
+  lotId            String?  @map("lot_id") @db.Uuid
+  quantity         Decimal  @db.Decimal(19, 6)
+  reservedQuantity Decimal  @map("reserved_quantity") @db.Decimal(19, 6)
+  version          Int
+  createdAt        DateTime @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, branchId, productId])
+  @@map("stock_balances")
+}
+
+model StockMovement {
+  id            String   @id @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  branchId      String   @map("branch_id") @db.Uuid
+  locationId    String   @map("location_id") @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  lotId         String?  @map("lot_id") @db.Uuid
+  movementType  String   @map("movement_type") @db.VarChar(30)
+  quantity      Decimal  @db.Decimal(19, 6)
+  unitCost      Decimal? @map("unit_cost") @db.Decimal(19, 4)
+  referenceType String   @map("reference_type") @db.VarChar(40)
+  referenceId   String   @map("reference_id") @db.Uuid
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz
+  createdBy     String?  @map("created_by") @db.Uuid
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, branchId, productId, occurredAt])
+  @@map("stock_movements")
+}
+
+model SupplierInvoice {
+  id            String   @id @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  branchId      String   @map("branch_id") @db.Uuid
+  supplierId    String   @map("supplier_id") @db.Uuid
+  accessKey     String   @map("access_key") @db.Char(44)
+  number        String   @db.VarChar(20)
+  series        String?  @db.VarChar(10)
+  issuedAt      DateTime @map("issued_at") @db.Timestamptz
+  total         Decimal  @db.Decimal(19, 4)
+  xmlStorageKey String   @map("xml_storage_key")
+  xmlHash       String   @map("xml_hash") @db.Char(64)
+  status        String   @db.VarChar(30)
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, accessKey])
+  @@unique([id, companyId])
+  @@map("supplier_invoices")
+}
+
+model SupplierInvoiceItem {
+  id                String   @id @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  supplierInvoiceId String   @map("supplier_invoice_id") @db.Uuid
+  productId         String?  @map("product_id") @db.Uuid
+  supplierCode      String?  @map("supplier_code") @db.VarChar(80)
+  description       String   @db.VarChar(240)
+  ncm               String?  @db.VarChar(8)
+  cfop              String?  @db.VarChar(4)
+  quantity          Decimal  @db.Decimal(19, 6)
+  unitPrice         Decimal  @map("unit_price") @db.Decimal(19, 4)
+  total             Decimal  @db.Decimal(19, 4)
+  taxPayload        Json     @map("tax_payload")
+  createdAt         DateTime @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz
+
+  @@map("supplier_invoice_items")
+}
+
+model SupplierInvoiceItemTrace {
+  id             String    @id @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  invoiceItemId  String    @map("invoice_item_id") @db.Uuid
+  lotId          String?   @map("lot_id") @db.Uuid
+  lotNumber      String    @map("lot_number") @db.VarChar(80)
+  quantity       Decimal   @db.Decimal(19, 6)
+  manufacturedAt DateTime? @map("manufactured_at") @db.Date
+  expiresAt      DateTime? @map("expires_at") @db.Date
+  createdAt      DateTime  @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @map("updated_at") @db.Timestamptz
+
+  @@map("supplier_invoice_item_traces")
+}
+
+model ImportJob {
+  id             String    @id @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  branchId       String?   @map("branch_id") @db.Uuid
+  importType     String    @map("import_type") @db.VarChar(40)
+  fileStorageKey String    @map("file_storage_key")
+  fileHash       String    @map("file_hash") @db.Char(64)
+  status         String    @db.VarChar(30)
+  totalRows      Int       @map("total_rows")
+  validRows      Int       @map("valid_rows")
+  invalidRows    Int       @map("invalid_rows")
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz
+  createdAt      DateTime  @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, branchId, status, createdAt])
+  @@map("import_jobs")
+}
+
+model ImportJobRow {
+  id               String   @id @db.Uuid
+  importJobId      String   @map("import_job_id") @db.Uuid
+  rowNumber        Int      @map("row_number")
+  rawData          Json     @map("raw_data")
+  normalizedData   Json?    @map("normalized_data")
+  errors           Json
+  importedEntityId String?  @map("imported_entity_id") @db.Uuid
+  createdAt        DateTime @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([importJobId, rowNumber])
+  @@map("import_job_rows")
+}
+
+model PurchaseSuggestion {
+  id           String   @id @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  forecastDays Int      @map("forecast_days")
+  parameters   Json
+  status       String   @db.VarChar(30)
+  calculatedAt DateTime @map("calculated_at") @db.Timestamptz
+  createdAt    DateTime @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([id, companyId])
+  @@index([companyId, branchId, calculatedAt], map: "purchase_suggestions_company_branch_calculated_idx")
+  @@map("purchase_suggestions")
+}
+
+model PurchaseSuggestionItem {
+  id                String   @id @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  suggestionId      String   @map("suggestion_id") @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  averageDailySales Decimal  @map("average_daily_sales") @db.Decimal(19, 6)
+  availableStock    Decimal  @map("available_stock") @db.Decimal(19, 6)
+  safetyStock       Decimal  @map("safety_stock") @db.Decimal(19, 6)
+  pendingPurchase   Decimal  @map("pending_purchase") @db.Decimal(19, 6)
+  suggestedQuantity Decimal  @map("suggested_quantity") @db.Decimal(19, 6)
+  explanation       Json
+  createdAt         DateTime @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([suggestionId, productId])
+  @@index([companyId, productId], map: "purchase_suggestion_items_company_product_idx")
+  @@map("purchase_suggestion_items")
+}
+
+model Quotation {
+  id                   String   @id @db.Uuid
+  companyId            String   @map("company_id") @db.Uuid
+  branchId             String   @map("branch_id") @db.Uuid
+  purchaseSuggestionId String?  @unique(map: "quotations_purchase_suggestion_uq") @map("purchase_suggestion_id") @db.Uuid
+  number               String   @db.VarChar(40)
+  status               String   @db.VarChar(30)
+  responseDeadline     DateTime @map("response_deadline") @db.Timestamptz
+  createdAt            DateTime @map("created_at") @db.Timestamptz
+  updatedAt            DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, number])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status, responseDeadline], map: "quotations_company_branch_status_idx")
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id          String   @id @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  quotationId String   @map("quotation_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  quantity    Decimal  @db.Decimal(19, 6)
+  createdAt   DateTime @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([quotationId, productId], map: "quotation_items_quotation_product_uq")
+  @@map("quotation_items")
+}
+
+model QuotationSupplier {
+  id              String    @id @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  quotationId     String    @map("quotation_id") @db.Uuid
+  supplierId      String    @map("supplier_id") @db.Uuid
+  accessTokenHash String    @unique @map("access_token_hash") @db.VarChar(255)
+  status          String    @db.VarChar(30)
+  sentAt          DateTime? @map("sent_at") @db.Timestamptz
+  respondedAt     DateTime? @map("responded_at") @db.Timestamptz
+  createdAt       DateTime  @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([quotationId, supplierId])
+  @@unique([id, companyId])
+  @@index([companyId, quotationId, status], map: "quotation_suppliers_company_quotation_status_idx")
+  @@map("quotation_suppliers")
+}
+
+model Integration {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  branchId        String?  @map("branch_id") @db.Uuid
+  provider        String   @db.VarChar(80)
+  integrationType String   @map("integration_type") @db.VarChar(40)
+  status          String   @db.VarChar(20)
+  publicConfig    Json     @map("public_config")
+  secretReference String?  @map("secret_reference")
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, provider, integrationType])
+  @@unique([id, companyId])
+  @@map("integrations")
+}
+
+model WhatsappMessage {
+  id                  String    @id @db.Uuid
+  companyId           String    @map("company_id") @db.Uuid
+  branchId            String    @map("branch_id") @db.Uuid
+  integrationId       String    @map("integration_id") @db.Uuid
+  quotationSupplierId String?   @map("quotation_supplier_id") @db.Uuid
+  direction           String    @db.VarChar(12)
+  recipient           String    @db.VarChar(30)
+  messageType         String    @default("text") @map("message_type") @db.VarChar(30)
+  providerMessageId   String?   @map("provider_message_id") @db.VarChar(255)
+  status              String    @db.VarChar(20)
+  requestPayload      Json      @map("request_payload")
+  responsePayload     Json?     @map("response_payload")
+  errorCode           String?   @map("error_code") @db.VarChar(80)
+  errorMessage        String?   @map("error_message")
+  attempts            Int
+  nextRetryAt         DateTime? @map("next_retry_at") @db.Timestamptz
+  sentAt              DateTime? @map("sent_at") @db.Timestamptz
+  deliveredAt         DateTime? @map("delivered_at") @db.Timestamptz
+  readAt              DateTime? @map("read_at") @db.Timestamptz
+  respondedAt         DateTime? @map("responded_at") @db.Timestamptz
+  failedAt            DateTime? @map("failed_at") @db.Timestamptz
+  createdAt           DateTime  @map("created_at") @db.Timestamptz
+  updatedAt           DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([integrationId, providerMessageId], map: "whatsapp_messages_integration_provider_message_uq")
+  @@index([companyId, branchId, status, createdAt], map: "whatsapp_messages_company_branch_status_idx")
+  @@index([integrationId, createdAt], map: "whatsapp_messages_integration_created_idx")
+  @@map("whatsapp_messages")
+}
+
+model BomHeader {
+  id                  String   @id @db.Uuid
+  companyId           String   @map("company_id") @db.Uuid
+  productId           String   @map("product_id") @db.Uuid
+  version             Int
+  yieldQuantity       Decimal  @map("yield_quantity") @db.Decimal(19, 6)
+  expectedLossPercent Decimal  @map("expected_loss_percent") @db.Decimal(9, 4)
+  active              Boolean
+  createdAt           DateTime @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([productId, version])
+  @@unique([id, companyId])
+  @@index([companyId, productId, active], map: "bom_headers_company_product_active_idx")
+  @@map("bom_headers")
+}
+
+model BomItem {
+  id                 String   @id @db.Uuid
+  companyId          String   @map("company_id") @db.Uuid
+  bomId              String   @map("bom_id") @db.Uuid
+  componentProductId String   @map("component_product_id") @db.Uuid
+  unitId             String   @map("unit_id") @db.Uuid
+  quantity           Decimal  @db.Decimal(19, 6)
+  lossPercent        Decimal  @map("loss_percent") @db.Decimal(9, 4)
+  createdAt          DateTime @map("created_at") @db.Timestamptz
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([bomId, componentProductId])
+  @@index([companyId, componentProductId], map: "bom_items_company_component_idx")
+  @@map("bom_items")
+}
+
+model ProductionOrder {
+  id               String    @id @db.Uuid
+  companyId        String    @map("company_id") @db.Uuid
+  branchId         String    @map("branch_id") @db.Uuid
+  bomId            String    @map("bom_id") @db.Uuid
+  productId        String    @map("product_id") @db.Uuid
+  number           String    @db.VarChar(40)
+  status           String    @db.VarChar(30)
+  plannedQuantity  Decimal   @map("planned_quantity") @db.Decimal(19, 6)
+  producedQuantity Decimal   @map("produced_quantity") @db.Decimal(19, 6)
+  plannedAt        DateTime  @map("planned_at") @db.Timestamptz
+  startedAt        DateTime? @map("started_at") @db.Timestamptz
+  finishedAt       DateTime? @map("finished_at") @db.Timestamptz
+  qualityNotes     String?   @map("quality_notes")
+  createdAt        DateTime  @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, number])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status, plannedAt], map: "production_orders_company_branch_status_idx")
+  @@map("production_orders")
+}
+
+model ProductionConsumption {
+  id                String   @id @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  productionOrderId String   @map("production_order_id") @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  lotId             String?  @map("lot_id") @db.Uuid
+  quantity          Decimal  @db.Decimal(19, 6)
+  lossQuantity      Decimal  @map("loss_quantity") @db.Decimal(19, 6)
+  stockMovementId   String   @map("stock_movement_id") @db.Uuid
+  createdAt         DateTime @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, productionOrderId], map: "production_consumptions_company_order_idx")
+  @@map("production_consumptions")
+}
+
+model ProductionOutput {
+  id                String   @id @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  productionOrderId String   @map("production_order_id") @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  lotId             String   @map("lot_id") @db.Uuid
+  quantity          Decimal  @db.Decimal(19, 6)
+  stockMovementId   String   @map("stock_movement_id") @db.Uuid
+  createdAt         DateTime @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, productionOrderId], map: "production_outputs_company_order_idx")
+  @@map("production_outputs")
+}
+
+model SalesQuote {
+  id              String    @id @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  branchId        String    @map("branch_id") @db.Uuid
+  customerId      String?   @map("customer_id") @db.Uuid
+  sellerId        String?   @map("seller_id") @db.Uuid
+  paymentMethodId String?   @map("payment_method_id") @db.Uuid
+  number          String    @db.VarChar(40)
+  status          String    @db.VarChar(30)
+  validUntil      DateTime? @map("valid_until") @db.Date
+  subtotal        Decimal   @db.Decimal(19, 4)
+  discount        Decimal   @db.Decimal(19, 4)
+  surcharge       Decimal   @db.Decimal(19, 4)
+  freight         Decimal   @db.Decimal(19, 4)
+  total           Decimal   @db.Decimal(19, 4)
+  notes           String?
+  createdAt       DateTime  @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, number])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status, createdAt], map: "sales_quotes_company_branch_status_idx")
+  @@map("sales_quotes")
+}
+
+model SalesQuoteItem {
+  id           String   @id @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  salesQuoteId String   @map("sales_quote_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  description  String   @db.VarChar(240)
+  quantity     Decimal  @db.Decimal(19, 6)
+  unitPrice    Decimal  @map("unit_price") @db.Decimal(19, 4)
+  discount     Decimal  @db.Decimal(19, 4)
+  total        Decimal  @db.Decimal(19, 4)
+  createdAt    DateTime @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([salesQuoteId, productId])
+  @@index([companyId, salesQuoteId], map: "sales_quote_items_company_quote_idx")
+  @@map("sales_quote_items")
+}
+
+model Order {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  branchId        String   @map("branch_id") @db.Uuid
+  customerId      String?  @map("customer_id") @db.Uuid
+  salesQuoteId    String?  @map("sales_quote_id") @db.Uuid
+  sellerId        String?  @map("seller_id") @db.Uuid
+  paymentMethodId String?  @map("payment_method_id") @db.Uuid
+  number          String   @db.VarChar(40)
+  origin          String   @db.VarChar(30)
+  status          String   @db.VarChar(30)
+  subtotal        Decimal  @db.Decimal(19, 4)
+  discount        Decimal  @db.Decimal(19, 4)
+  surcharge       Decimal  @db.Decimal(19, 4)
+  freight         Decimal  @db.Decimal(19, 4)
+  total           Decimal  @db.Decimal(19, 4)
+  notes           String?
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, number])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status, createdAt], map: "orders_company_branch_status_idx")
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String   @id @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  orderId     String   @map("order_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  locationId  String?  @map("location_id") @db.Uuid
+  lotId       String?  @map("lot_id") @db.Uuid
+  description String   @db.VarChar(240)
+  quantity    Decimal  @db.Decimal(19, 6)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(19, 4)
+  discount    Decimal  @db.Decimal(19, 4)
+  total       Decimal  @db.Decimal(19, 4)
+  createdAt   DateTime @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([id, companyId])
+  @@index([companyId, orderId], map: "order_items_company_order_idx")
+  @@map("order_items")
+}
+
+model PaymentMethod {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(100)
+  type      String   @db.VarChar(30)
+  active    Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@map("payment_methods")
+}
+
+model Payment {
+  id              String    @id @db.Uuid
+  companyId       String    @map("company_id") @db.Uuid
+  branchId        String    @map("branch_id") @db.Uuid
+  orderId         String    @map("order_id") @db.Uuid
+  paymentMethodId String    @map("payment_method_id") @db.Uuid
+  amount          Decimal   @db.Decimal(19, 4)
+  status          String    @db.VarChar(30)
+  idempotencyKey  String    @map("idempotency_key") @db.VarChar(120)
+  paidAt          DateTime? @map("paid_at") @db.Timestamptz
+  createdAt       DateTime  @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, idempotencyKey])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status, createdAt], map: "payments_company_branch_status_idx")
+  @@map("payments")
+}
+
+model Sale {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  orderId   String   @unique @map("order_id") @db.Uuid
+  number    String   @db.VarChar(40)
+  status    String   @db.VarChar(30)
+  soldAt    DateTime @map("sold_at") @db.Timestamptz
+  total     Decimal  @db.Decimal(19, 4)
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, number])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, soldAt], map: "sales_company_branch_sold_idx")
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String   @id @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  saleId      String   @map("sale_id") @db.Uuid
+  orderItemId String   @map("order_item_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  quantity    Decimal  @db.Decimal(19, 6)
+  unitPrice   Decimal  @map("unit_price") @db.Decimal(19, 4)
+  total       Decimal  @db.Decimal(19, 4)
+  taxSnapshot Json     @map("tax_snapshot")
+  createdAt   DateTime @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([id, companyId])
+  @@index([companyId, saleId], map: "sale_items_company_sale_idx")
+  @@map("sale_items")
+}
+
+model SaleItemTrace {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  saleItemId      String   @map("sale_item_id") @db.Uuid
+  lotId           String   @map("lot_id") @db.Uuid
+  stockMovementId String   @map("stock_movement_id") @db.Uuid
+  quantity        Decimal  @db.Decimal(19, 6)
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, saleItemId], map: "sale_item_traces_company_sale_item_idx")
+  @@map("sale_item_traces")
+}
+
+model QuotationResponseItem {
+  id                  String   @id @db.Uuid
+  companyId           String   @map("company_id") @db.Uuid
+  quotationSupplierId String   @map("quotation_supplier_id") @db.Uuid
+  quotationItemId     String   @map("quotation_item_id") @db.Uuid
+  brand               String?  @db.VarChar(120)
+  offeredQuantity     Decimal  @map("offered_quantity") @db.Decimal(19, 6)
+  unitPrice           Decimal  @map("unit_price") @db.Decimal(19, 4)
+  leadDays            Int?     @map("lead_days")
+  paymentTerms        String?  @map("payment_terms")
+  paymentTermDays     Int?     @map("payment_term_days")
+  notes               String?
+  createdAt           DateTime @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([quotationSupplierId, quotationItemId])
+  @@index([companyId, quotationItemId], map: "quotation_responses_company_item_idx")
+  @@map("quotation_response_items")
+}
+
+model PriceTable {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(120)
+  active    Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@map("price_tables")
+}
+
+model ProductPrice {
+  id             String    @id @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  productId      String    @map("product_id") @db.Uuid
+  priceTableId   String    @map("price_table_id") @db.Uuid
+  branchId       String?   @map("branch_id") @db.Uuid
+  cost           Decimal   @db.Decimal(19, 4)
+  salePrice      Decimal   @map("sale_price") @db.Decimal(19, 4)
+  minimumPrice   Decimal?  @map("minimum_price") @db.Decimal(19, 4)
+  commissionRate Decimal   @map("commission_rate") @db.Decimal(9, 4)
+  validFrom      DateTime  @map("valid_from") @db.Timestamptz
+  validUntil     DateTime? @map("valid_until") @db.Timestamptz
+  createdAt      DateTime  @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @map("updated_at") @db.Timestamptz
+
+  @@map("product_prices")
+}
+
+model CashRegister {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(100)
+  active    Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([branchId, code])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, active], map: "cash_registers_company_branch_active_idx")
+  @@map("cash_registers")
+}
+
+model CashSession {
+  id             String    @id @db.Uuid
+  companyId      String    @map("company_id") @db.Uuid
+  cashRegisterId String    @map("cash_register_id") @db.Uuid
+  operatorId     String    @map("operator_id") @db.Uuid
+  status         String    @db.VarChar(20)
+  openingAmount  Decimal   @map("opening_amount") @db.Decimal(19, 4)
+  openedAt       DateTime  @map("opened_at") @db.Timestamptz
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz
+  createdAt      DateTime  @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([id, companyId])
+  @@index([companyId, cashRegisterId, status], map: "cash_sessions_register_status_idx")
+  @@index([companyId, operatorId, status], map: "cash_sessions_operator_status_idx")
+  @@map("cash_sessions")
+}
+
+model CashMovement {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  cashSessionId   String   @map("cash_session_id") @db.Uuid
+  paymentId       String?  @map("payment_id") @db.Uuid
+  paymentMethodId String?  @map("payment_method_id") @db.Uuid
+  type            String   @db.VarChar(30)
+  amount          Decimal  @db.Decimal(19, 4)
+  description     String   @db.VarChar(240)
+  occurredAt      DateTime @map("occurred_at") @db.Timestamptz
+  createdBy       String   @map("created_by") @db.Uuid
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, cashSessionId, occurredAt], map: "cash_movements_session_occurred_idx")
+  @@map("cash_movements")
+}
+
+model CashClosingCount {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  cashSessionId   String   @map("cash_session_id") @db.Uuid
+  paymentMethodId String   @map("payment_method_id") @db.Uuid
+  systemAmount    Decimal  @map("system_amount") @db.Decimal(19, 4)
+  countedAmount   Decimal  @map("counted_amount") @db.Decimal(19, 4)
+  difference      Decimal  @db.Decimal(19, 4)
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([cashSessionId, paymentMethodId])
+  @@index([companyId, cashSessionId], map: "cash_closing_counts_session_idx")
+  @@map("cash_closing_counts")
+}
+
+model ChartAccount {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  parentId  String?  @map("parent_id") @db.Uuid
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(160)
+  nature    String   @db.Char(1)
+  active    Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@map("chart_accounts")
+}
+
+model AccountReceivable {
+  id             String   @id @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  branchId       String   @map("branch_id") @db.Uuid
+  customerId     String?  @map("customer_id") @db.Uuid
+  orderId        String?  @map("order_id") @db.Uuid
+  chartAccountId String   @map("chart_account_id") @db.Uuid
+  costCenterId   String?  @map("cost_center_id") @db.Uuid
+  description    String   @db.VarChar(240)
+  competenceDate DateTime @map("competence_date") @db.Date
+  dueDate        DateTime @map("due_date") @db.Date
+  amount         Decimal  @db.Decimal(19, 4)
+  openAmount     Decimal  @map("open_amount") @db.Decimal(19, 4)
+  status         String   @db.VarChar(20)
+  createdAt      DateTime @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([id, companyId])
+  @@index([companyId, customerId, status, dueDate], map: "accounts_receivable_customer_due_idx")
+  @@map("accounts_receivable")
+}
+
+model FinancialSettlement {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  payableId       String?  @map("payable_id") @db.Uuid
+  receivableId    String?  @map("receivable_id") @db.Uuid
+  bankAccountId   String?  @map("bank_account_id") @db.Uuid
+  cashSessionId   String?  @map("cash_session_id") @db.Uuid
+  paymentMethodId String?  @map("payment_method_id") @db.Uuid
+  receivedBy      String?  @map("received_by") @db.Uuid
+  principalAmount Decimal  @map("principal_amount") @db.Decimal(19, 4)
+  interest        Decimal  @db.Decimal(19, 4)
+  discount        Decimal  @db.Decimal(19, 4)
+  settledAt       DateTime @map("settled_at") @db.Timestamptz
+  idempotencyKey  String   @map("idempotency_key") @db.VarChar(120)
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, receivableId, settledAt], map: "financial_settlements_receivable_idx")
+  @@map("financial_settlements")
+}
+
+model FoodTable {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  branchId  String   @map("branch_id") @db.Uuid
+  code      String   @db.VarChar(30)
+  name      String   @db.VarChar(80)
+  capacity  Int
+  status    String   @db.VarChar(20)
+  active    Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, code])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status], map: "food_tables_branch_status_idx")
+  @@map("food_tables")
+}
+
+model FoodTab {
+  id         String    @id @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  branchId   String    @map("branch_id") @db.Uuid
+  tableId    String?   @map("table_id") @db.Uuid
+  customerId String?   @map("customer_id") @db.Uuid
+  waiterId   String?   @map("waiter_id") @db.Uuid
+  number     String    @db.VarChar(40)
+  channel    String    @db.VarChar(30)
+  status     String    @db.VarChar(20)
+  guests     Int
+  notes      String?
+  openedAt   DateTime  @map("opened_at") @db.Timestamptz
+  closedAt   DateTime? @map("closed_at") @db.Timestamptz
+  createdAt  DateTime  @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, number])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status, openedAt], map: "food_tabs_branch_status_idx")
+  @@index([companyId, tableId, status], map: "food_tabs_table_status_idx")
+  @@map("food_tabs")
+}
+
+model FoodTabItem {
+  id        String   @id @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  tabId     String   @map("tab_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  quantity  Decimal  @db.Decimal(19, 6)
+  unitPrice Decimal  @map("unit_price") @db.Decimal(19, 4)
+  total     Decimal  @db.Decimal(19, 4)
+  notes     String?
+  status    String   @db.VarChar(20)
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz
+  updatedAt DateTime @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, tabId, createdAt], map: "food_tab_items_tab_idx")
+  @@map("food_tab_items")
+}
+
+model FiscalSetting {
+  id                         String    @id @db.Uuid
+  companyId                  String    @map("company_id") @db.Uuid
+  branchId                   String    @map("branch_id") @db.Uuid
+  taxRegime                  String    @map("tax_regime") @db.VarChar(30)
+  environment                String    @db.VarChar(20)
+  certificateSecretReference String?   @map("certificate_secret_reference")
+  settings                   Json
+  validFrom                  DateTime  @map("valid_from") @db.Date
+  validUntil                 DateTime? @map("valid_until") @db.Date
+  createdAt                  DateTime  @map("created_at") @db.Timestamptz
+  updatedAt                  DateTime  @map("updated_at") @db.Timestamptz
+
+  @@index([companyId, branchId, validFrom], map: "fiscal_settings_branch_valid_idx")
+  @@map("fiscal_settings")
+}
+
+model FiscalDocument {
+  id                String    @id @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  branchId          String    @map("branch_id") @db.Uuid
+  saleId            String?   @map("sale_id") @db.Uuid
+  supplierInvoiceId String?   @map("supplier_invoice_id") @db.Uuid
+  documentType      String    @map("document_type") @db.VarChar(10)
+  model             String?   @db.VarChar(4)
+  series            String?   @db.VarChar(10)
+  number            BigInt?
+  accessKey         String?   @map("access_key") @db.Char(44)
+  status            String    @db.VarChar(30)
+  issuedAt          DateTime? @map("issued_at") @db.Timestamptz
+  total             Decimal   @db.Decimal(19, 4)
+  xmlStorageKey     String?   @map("xml_storage_key")
+  protocol          String?   @db.VarChar(60)
+  qrCodeUrl         String?   @map("qr_code_url")
+  danfePayload      Json?     @map("danfe_payload")
+  createdAt         DateTime  @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, accessKey])
+  @@unique([companyId, branchId, documentType, series, number])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, saleId, status], map: "fiscal_documents_sale_status_idx")
+  @@map("fiscal_documents")
+}
+
+model FiscalDocumentItem {
+  id               String   @id @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  fiscalDocumentId String   @map("fiscal_document_id") @db.Uuid
+  productId        String?  @map("product_id") @db.Uuid
+  saleItemId       String?  @map("sale_item_id") @db.Uuid
+  sequence         Int
+  description      String   @db.VarChar(240)
+  ncm              String?  @db.VarChar(8)
+  cest             String?  @db.VarChar(7)
+  cfop             String?  @db.VarChar(4)
+  cstCsosn         String?  @map("cst_csosn") @db.VarChar(4)
+  quantity         Decimal  @db.Decimal(19, 6)
+  unitPrice        Decimal  @map("unit_price") @db.Decimal(19, 4)
+  total            Decimal  @db.Decimal(19, 4)
+  taxes            Json
+  createdAt        DateTime @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([fiscalDocumentId, sequence])
+  @@map("fiscal_document_items")
+}
