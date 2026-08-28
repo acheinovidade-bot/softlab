@@ -58,3 +58,9 @@ export const receiveCreditSchema = z.object({
   paymentMethodId: z.string().uuid(),
   idempotencyKey: z.string().uuid(),
 });
+
+export const posSettingsSchema = z.object({
+  defaultCustomerId: z.string().uuid().nullable().default(null),
+  defaultSellerId: z.string().uuid(),
+  defaultLocationId: z.string().uuid(),
+});

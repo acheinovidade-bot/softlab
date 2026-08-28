@@ -18,6 +18,11 @@ type Lookup = {
   paymentMethods: Array<{ id: string; code: string; name: string; type: string }>;
   locations: Array<{ id: string; code: string; name: string }>;
   products: PosProduct[];
+  settings?: {
+    defaultCustomerId: string | null;
+    defaultSellerId: string | null;
+    defaultLocationId: string | null;
+  };
 };
 type CartItem = PosProduct & { quantity: number; unitPrice: number; discount: number };
 type PaymentDraft = { key: number; paymentMethodId: string; amount: string };
@@ -27,11 +32,13 @@ export function PosPanel({
   canReadCredit = false,
   canReceiveCredit = false,
   offlineScope = 'default',
+  onOpenSettings,
 }: {
   canDiscount: boolean;
   canReadCredit?: boolean;
   canReceiveCredit?: boolean;
   offlineScope?: string;
+  onOpenSettings?: () => void;
 }) {
   const [lookup, setLookup] = useState<Lookup>({
     customers: [],
@@ -47,6 +54,8 @@ export function PosPanel({
   ]);
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
   const [customerId, setCustomerId] = useState('');
+  const [sellerId, setSellerId] = useState('');
+  const [locationId, setLocationId] = useState('');
   const [statementOpen, setStatementOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -83,6 +92,7 @@ export function PosPanel({
         const data = await apiRequest<Lookup>('/sales/pos/lookups');
         await cachePosLookups(offlineScope, data);
         setLookup(data);
+        applyDefaults(data);
         setPayments([
           { key: 1, paymentMethodId: data.paymentMethods[0]?.id ?? '', amount: '0.00' },
         ]);
@@ -90,6 +100,7 @@ export function PosPanel({
         const cached = await readPosLookups<Lookup>(offlineScope);
         if (!cached) return setError(message(reason));
         setLookup(cached);
+        applyDefaults(cached);
         setPayments([
           { key: 1, paymentMethodId: cached.paymentMethods[0]?.id ?? '', amount: '0.00' },
         ]);
@@ -97,6 +108,17 @@ export function PosPanel({
       }
     })();
   }, [offlineScope]);
+
+  function applyDefaults(data: Lookup) {
+    const customer = data.settings?.defaultCustomerId;
+    const seller = data.settings?.defaultSellerId;
+    const location = data.settings?.defaultLocationId;
+    setCustomerId(data.customers.some(({ id }) => id === customer) ? customer! : '');
+    setSellerId(data.sellers.some(({ id }) => id === seller) ? seller! : (data.sellers[0]?.id ?? ''));
+    setLocationId(
+      data.locations.some(({ id }) => id === location) ? location! : (data.locations[0]?.id ?? ''),
+    );
+  }
   useEffect(() => {
     async function updateCount() {
       setPendingOffline(await pendingCheckoutCount(offlineScope));
@@ -197,6 +219,8 @@ export function PosPanel({
   async function checkout(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!cart.length) return setError('Adicione ao menos um produto');
+    if (!sellerId || !locationId)
+      return setError('Defina o vendedor e o local padrão nas Configurações do PDV');
     if (Math.abs(paid - total) > 0.009)
       return setError('Os pagamentos devem fechar exatamente o total da venda');
     const form = new FormData(event.currentTarget);
@@ -205,9 +229,9 @@ export function PosPanel({
     try {
       const body = {
         idempotencyKey: requestKey.current,
-        customerId: field(form, 'customerId'),
-        sellerId: field(form, 'sellerId'),
-        locationId: field(form, 'locationId'),
+        customerId: customerId || null,
+        sellerId,
+        locationId,
         notes: field(form, 'notes'),
         creditDueDate: field(form, 'creditDueDate'),
         items: cart.map((item) => ({
@@ -244,9 +268,9 @@ export function PosPanel({
         const key = requestKey.current;
         const body = {
           idempotencyKey: key,
-          customerId: field(form, 'customerId'),
-          sellerId: field(form, 'sellerId'),
-          locationId: field(form, 'locationId'),
+          customerId: customerId || null,
+          sellerId,
+          locationId,
           notes: field(form, 'notes'),
           creditDueDate: field(form, 'creditDueDate'),
           items: cart.map((item) => ({
@@ -301,7 +325,7 @@ export function PosPanel({
   function reset(clearReceipt = true) {
     setCart([]);
     setSearch('');
-    setCustomerId('');
+    setCustomerId(lookup.settings?.defaultCustomerId ?? '');
     setPayments([{ key: 1, paymentMethodId: lookup.paymentMethods[0]?.id ?? '', amount: '0.00' }]);
     requestKey.current = randomId();
     if (clearReceipt) setReceipt(null);
@@ -314,6 +338,11 @@ export function PosPanel({
           <h1>Venda rápida</h1>
         </div>
         <div className="pos-header-tools">
+          {onOpenSettings && (
+            <button type="button" className="quiet" onClick={onOpenSettings}>
+              Configurações do PDV
+            </button>
+          )}
           <div className={`pos-connectivity ${online ? 'online' : 'offline'}`}>
             <span>{online ? '● Online' : '● Offline'}</span>
             {pendingOffline > 0 && (
@@ -453,32 +482,17 @@ export function PosPanel({
           </div>
         </main>
         <aside className="pos-checkout">
-          <label>
-            Vendedor
-            <select name="sellerId" required>
-              <option value="">Selecione</option>
-              {lookup.sellers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Cliente
-            <select
-              name="customerId"
-              value={customerId}
-              onChange={(event) => setCustomerId(event.target.value)}
-            >
-              <option value="">Consumidor não identificado</option>
-              {lookup.customers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="pos-defaults" aria-label="Padrões desta venda">
+            <span>
+              Vendedor <strong>{lookup.sellers.find(({ id }) => id === sellerId)?.name ?? 'Não configurado'}</strong>
+            </span>
+            <span>
+              Estoque <strong>{lookup.locations.find(({ id }) => id === locationId)?.name ?? 'Não configurado'}</strong>
+            </span>
+            <span>
+              Cliente <strong>{lookup.customers.find(({ id }) => id === customerId)?.name ?? 'Consumidor não identificado'}</strong>
+            </span>
+          </div>
           {canReadCredit && (
             <button
               type="button"
@@ -489,17 +503,6 @@ export function PosPanel({
               Extrato do cliente
             </button>
           )}
-          <label>
-            Local de saída
-            <select name="locationId" required>
-              <option value="">Selecione</option>
-              {lookup.locations.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.code} · {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <div className="pos-total">
             <span>Total</span>
             <strong>{money(total)}</strong>

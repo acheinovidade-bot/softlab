@@ -29,7 +29,7 @@ describe('DeliveryPanel', () => {
       orders: [],
     } as never);
 
-    render(<DeliveryPanel canOperate canManage={false} />);
+    render(<DeliveryPanel canOperate />);
 
     expect(screen.getByRole('heading', { name: 'Kanban de entregas' })).toBeInTheDocument();
     expect(await screen.findByText('PED-1042')).toBeInTheDocument();

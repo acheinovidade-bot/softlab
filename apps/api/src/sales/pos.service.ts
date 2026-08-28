@@ -12,6 +12,7 @@ import { PrismaService } from '../infrastructure/database/prisma.service';
 import {
   customerStatementQuerySchema,
   posCheckoutSchema,
+  posSettingsSchema,
   receiveCreditSchema,
 } from './pos.schemas';
 
@@ -20,7 +21,7 @@ export class PosService {
   constructor(private readonly prisma: PrismaService) {}
 
   async lookups(auth: AccessTokenPayload) {
-    const [customers, sellers, products, paymentMethods, warehouses] = await Promise.all([
+    const [customers, sellers, products, paymentMethods, warehouses, settings] = await Promise.all([
       this.prisma.customer.findMany({
         where: { companyId: auth.companyId, active: true, deletedAt: null },
         orderBy: { legalName: 'asc' },
@@ -64,6 +65,7 @@ export class PosService {
         where: { companyId: auth.companyId, branchId: auth.branchId },
         select: { id: true },
       }),
+      this.settings(auth),
     ]);
     const locations = await this.prisma.stockLocation.findMany({
       where: { companyId: auth.companyId, warehouseId: { in: warehouses.map(({ id }) => id) } },
@@ -94,6 +96,7 @@ export class PosService {
       sellers,
       paymentMethods,
       locations,
+      settings,
       products: products.map((product) => {
         const price = this.priceFor(prices, product.id, auth.branchId);
         const available = balances
@@ -104,6 +107,73 @@ export class PosService {
           );
         return { ...product, salePrice: price?.salePrice ?? null, availableQuantity: available };
       }),
+    };
+  }
+
+  async settings(auth: AccessTokenPayload) {
+    const current = await this.prisma.posSetting.findUnique({
+      where: { companyId_branchId: { companyId: auth.companyId, branchId: auth.branchId } },
+    });
+    return {
+      defaultCustomerId: current?.defaultCustomerId ?? null,
+      defaultSellerId: current?.defaultSellerId ?? null,
+      defaultLocationId: current?.defaultLocationId ?? null,
+    };
+  }
+
+  async updateSettings(auth: AccessTokenPayload, input: unknown) {
+    const data = posSettingsSchema.parse(input);
+    const [customer, seller, location] = await Promise.all([
+      data.defaultCustomerId
+        ? this.prisma.customer.findFirst({
+            where: {
+              id: data.defaultCustomerId,
+              companyId: auth.companyId,
+              active: true,
+              deletedAt: null,
+            },
+          })
+        : Promise.resolve(true),
+      this.prisma.employee.findFirst({
+        where: {
+          id: data.defaultSellerId,
+          companyId: auth.companyId,
+          active: true,
+          deletedAt: null,
+          OR: [{ branchId: auth.branchId }, { branchId: null }],
+        },
+      }),
+      this.prisma.stockLocation.findFirst({
+        where: { id: data.defaultLocationId, companyId: auth.companyId },
+      }),
+    ]);
+    const warehouse = location
+      ? await this.prisma.warehouse.findFirst({
+          where: { id: location.warehouseId, companyId: auth.companyId, branchId: auth.branchId },
+        })
+      : null;
+    if (!customer) throw new NotFoundException('Cliente padrão não encontrado');
+    if (!seller) throw new NotFoundException('Vendedor padrão não encontrado');
+    if (!location || !warehouse) throw new NotFoundException('Local padrão fora da filial');
+    const now = new Date();
+    const saved = await this.prisma.posSetting.upsert({
+      where: { companyId_branchId: { companyId: auth.companyId, branchId: auth.branchId } },
+      create: {
+        id: uuidV7(),
+        companyId: auth.companyId,
+        branchId: auth.branchId,
+        ...data,
+        createdBy: auth.sub,
+        updatedBy: auth.sub,
+        createdAt: now,
+        updatedAt: now,
+      },
+      update: { ...data, updatedBy: auth.sub, updatedAt: now },
+    });
+    return {
+      defaultCustomerId: saved.defaultCustomerId,
+      defaultSellerId: saved.defaultSellerId,
+      defaultLocationId: saved.defaultLocationId,
     };
   }
 

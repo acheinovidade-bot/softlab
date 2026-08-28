@@ -10,6 +10,8 @@ Uma entrega percorre `new`, `confirmed`, `preparing`, `ready`, `out_for_delivery
 
 As zonas podem ser configuradas por bairro, CEP, distância ou raio. Na criação da entrega, o serviço compara o endereço e a distância informada com as zonas ativas da filial e aplica a menor taxa compatível. O valor calculado fica gravado na entrega para preservar o histórico.
 
+Os cadastros de entregadores e zonas ficam em **Configurações → Delivery**. O quadro de Delivery permanece dedicado à operação e ao avanço das entregas.
+
 Para uma zona por raio, marque no Google Maps o ponto central e informe o alcance em quilômetros. Ao criar a entrega, marque a localização do endereço. A API calcula a distância geográfica pela fórmula de Haversine, sem confiar em uma taxa calculada pelo navegador. Configure `VITE_GOOGLE_MAPS_API_KEY` no ambiente web e restrinja a chave no Google Cloud às origens autorizadas e à Maps JavaScript API.
 
 ## API

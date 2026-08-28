@@ -31,6 +31,7 @@ export const demoUser: CurrentUser = {
     'sales.discounts.apply',
     'sales.pos.use',
     'sales.pos.discount',
+    'sales.pos.settings.manage',
     'sales.credit.read',
     'sales.credit.receive',
     'finance.cash.read',
@@ -132,6 +133,11 @@ export function demoResponse(path: string): unknown {
     };
   if (path === '/sales/pos/lookups')
     return {
+      settings: {
+        defaultCustomerId: null,
+        defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
+        defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
+      },
       customers: [
         { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
         { id: '018f4f12-2222-7222-8222-000000000102', name: 'Mercado Boa Mesa' },
@@ -187,6 +193,12 @@ export function demoResponse(path: string): unknown {
           availableQuantity: '25',
         },
       ],
+    };
+  if (path === '/sales/pos/settings')
+    return {
+      defaultCustomerId: null,
+      defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
+      defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
     };
   if (path === '/food/overview')
     return {

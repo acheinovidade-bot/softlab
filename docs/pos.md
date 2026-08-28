@@ -10,10 +10,11 @@ O PDV registra uma venda de balcão em uma única transação serializável. Ped
 - `Esc`: solicita confirmação antes de limpar a venda atual.
 - Produtos com preço aberto permitem edição do valor. Descontos exigem `sales.pos.discount`.
 - O pagamento pode ser dividido entre formas distintas, mas a soma deve coincidir exatamente com o total.
+- Vendedor, local de estoque e cliente não são selecionados a cada venda. O PDV aplica os padrões da filial definidos em **Configurações → PDV**; cliente pode permanecer como consumidor não identificado.
 
 ## Estoque e lotes
 
-Produtos sem controle de lote baixam o saldo do local selecionado. Produtos controlados usam FEFO: os lotes com vencimento mais próximo são consumidos primeiro, podendo uma linha ser dividida entre vários lotes. Lotes vencidos ou sem validade são ignorados quando o produto controla validade. A tabela `sale_item_traces` mantém a ligação entre item, lote, quantidade e movimento de estoque.
+Produtos sem controle de lote baixam o saldo do local padrão configurado para a filial. Produtos controlados usam FEFO: os lotes com vencimento mais próximo são consumidos primeiro, podendo uma linha ser dividida entre vários lotes. Lotes vencidos ou sem validade são ignorados quando o produto controla validade. A tabela `sale_item_traces` mantém a ligação entre item, lote, quantidade e movimento de estoque.
 
 ## Idempotência e segurança
 
@@ -22,6 +23,8 @@ Cada tentativa recebe uma chave UUID. Os pagamentos armazenam essa chave com o p
 ## Endpoints
 
 - `GET /api/v1/sales/pos/lookups`: clientes, vendedores, locais, formas de pagamento, preços e disponibilidade.
+- `GET /api/v1/sales/pos/settings`: consulta os padrões da filial.
+- `PUT /api/v1/sales/pos/settings`: salva vendedor, local e cliente padrão; exige `sales.pos.settings.manage`.
 - `POST /api/v1/sales/pos/checkout`: checkout atômico e resposta com pedido, venda, total e contagens.
 
 Os pagamentos ficam vinculados ao pedido. A abertura, movimentação e conferência de gaveta serão tratadas pelo módulo de Caixa, sem alterar o histórico da venda.

@@ -1,4 +1,4 @@
-import { posCheckoutSchema } from './pos.schemas';
+import { posCheckoutSchema, posSettingsSchema } from './pos.schemas';
 
 const id = (suffix: string) => `018f4f12-2222-7222-8222-${suffix.padStart(12, '0')}`;
 const checkout = {
@@ -32,5 +32,21 @@ describe('POS checkout schema', () => {
       posCheckoutSchema.parse({ ...checkout, creditDueDate: '2026-09-30' }).creditDueDate,
     ).toBe('2026-09-30');
     expect(() => posCheckoutSchema.parse({ ...checkout, creditDueDate: '30/09/2026' })).toThrow();
+  });
+});
+
+describe('POS settings schema', () => {
+  it('accepts branch defaults with an optional customer', () => {
+    expect(
+      posSettingsSchema.parse({
+        defaultCustomerId: null,
+        defaultSellerId: id('2'),
+        defaultLocationId: id('3'),
+      }),
+    ).toEqual({
+      defaultCustomerId: null,
+      defaultSellerId: id('2'),
+      defaultLocationId: id('3'),
+    });
   });
 });

@@ -50,10 +50,8 @@ const next: Record<string, string> = {
 
 export function DeliveryPanel({
   canOperate,
-  canManage,
 }: {
   canOperate: boolean;
-  canManage: boolean;
 }) {
   const [data, setData] = useState<Overview>({
     deliveries: [],
@@ -67,10 +65,6 @@ export function DeliveryPanel({
   const [dispatching, setDispatching] = useState<Delivery | null>(null);
   const [addressId, setAddressId] = useState('');
   const [destination, setDestination] = useState<{ latitude: number; longitude: number } | null>(
-    null,
-  );
-  const [zoneType, setZoneType] = useState('neighborhood');
-  const [zoneCenter, setZoneCenter] = useState<{ latitude: number; longitude: number } | null>(
     null,
   );
   const order = useMemo(
@@ -276,92 +270,6 @@ export function DeliveryPanel({
           </section>
         ))}
       </div>
-      {canManage && (
-        <div className="delivery-settings">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const f = new FormData(event.currentTarget);
-              void post(
-                '/delivery/drivers',
-                { name: f.get('name'), phone: f.get('phone') || null, employeeId: null },
-                'driver',
-              ).then((ok) => ok && event.currentTarget.reset());
-            }}
-          >
-            <h2>Novo entregador</h2>
-            <input name="name" placeholder="Nome" required />
-            <input name="phone" placeholder="Telefone" />
-            <button className="quiet" disabled={busy === 'driver'}>
-              Cadastrar
-            </button>
-          </form>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const f = new FormData(event.currentTarget);
-              const type = formText(f, 'calculationType');
-              void post(
-                '/delivery/zones',
-                {
-                  name: f.get('name'),
-                  calculationType: type,
-                  values: formText(f, 'values')
-                    .split(',')
-                    .map((item) => item.trim())
-                    .filter(Boolean),
-                  maxDistanceKm: f.get('maxDistanceKm') || null,
-                  centerLatitude: zoneCenter?.latitude ?? null,
-                  centerLongitude: zoneCenter?.longitude ?? null,
-                  fee: f.get('fee'),
-                },
-                'zone',
-              ).then((ok) => ok && event.currentTarget.reset());
-            }}
-          >
-            <h2>Nova zona de entrega</h2>
-            <input name="name" placeholder="Nome da zona" required />
-            <select
-              name="calculationType"
-              value={zoneType}
-              onChange={(event) => setZoneType(event.target.value)}
-            >
-              <option value="neighborhood">Por bairro</option>
-              <option value="postal_code">Por CEP</option>
-              <option value="distance">Por distância</option>
-              <option value="radius">Por raio</option>
-            </select>
-            {(zoneType === 'neighborhood' || zoneType === 'postal_code') && (
-              <input
-                name="values"
-                placeholder={
-                  zoneType === 'neighborhood'
-                    ? 'Bairros separados por vírgula'
-                    : 'CEPs separados por vírgula'
-                }
-              />
-            )}
-            <input
-              name="maxDistanceKm"
-              type="number"
-              min="0.1"
-              step="0.1"
-              placeholder="Distância máxima"
-            />
-            {zoneType === 'radius' && (
-              <div className="delivery-map-field">
-                <span>Centro do raio no Google Maps</span>
-                <GoogleMapPicker value={zoneCenter} onChange={setZoneCenter} />
-                <CoordinateFields value={zoneCenter} onChange={setZoneCenter} prefix="centro" />
-              </div>
-            )}
-            <input name="fee" type="number" min="0" step="0.01" placeholder="Taxa R$" required />
-            <button className="quiet" disabled={busy === 'zone'}>
-              Cadastrar zona
-            </button>
-          </form>
-        </div>
-      )}
       {dispatching && (
         <div
           className="food-summary-backdrop"

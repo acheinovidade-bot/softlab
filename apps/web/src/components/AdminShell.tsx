@@ -18,6 +18,7 @@ import { CashPanel } from './CashPanel';
 import { FoodServicePanel } from './FoodServicePanel';
 import { DeliveryPanel } from './DeliveryPanel';
 import { SalesForceApp } from './SalesForceApp';
+import { SystemSettingsPanel } from './SystemSettingsPanel';
 
 export type Section =
   | 'subscription'
@@ -33,6 +34,7 @@ export type Section =
   | 'cash'
   | 'food'
   | 'delivery'
+  | 'settings'
   | 'purchase-xml'
   | 'customers'
   | 'suppliers'
@@ -60,12 +62,12 @@ const navigationGroups: Array<{
     sections: ['stock', 'purchase-suggestions', 'quotations', 'purchase-xml'],
   },
   {
-    label: 'Produção e integrações',
-    sections: ['production', 'whatsapp'],
+    label: 'Produção',
+    sections: ['production'],
   },
   {
     label: 'Administração',
-    sections: ['subscription', 'branches', 'users', 'roles'],
+    sections: ['settings', 'subscription', 'branches', 'users', 'roles'],
   },
 ];
 
@@ -78,7 +80,7 @@ export function AdminShell({
   onLogout: () => Promise<void>;
   initialSection?: Section;
 }) {
-  const available = [
+  const availableCandidates: Array<NavigationItem | false> = [
     user.modules.includes('catalog') &&
       user.permissions.includes('catalog.products.read') && {
         id: 'products' as const,
@@ -131,17 +133,19 @@ export function AdminShell({
         id: 'quotations' as const,
         label: 'Cotações',
       },
-    user.modules.includes('integrations') &&
-      user.permissions.includes('integrations.whatsapp.read') && {
-        id: 'whatsapp' as const,
-        label: 'WhatsApp',
-      },
     user.modules.includes('production') &&
       user.permissions.includes('production.orders.read') &&
       user.permissions.includes('production.engineering.read') && {
         id: 'production' as const,
         label: 'Produção',
       },
+    (user.permissions.includes('sales.pos.use') ||
+      user.permissions.includes('logistics.settings.manage') ||
+      user.permissions.includes('integrations.whatsapp.read') ||
+      user.permissions.includes('admin.branches.read')) && {
+      id: 'settings' as const,
+      label: 'Configurações',
+    },
     user.modules.includes('purchases') &&
       user.permissions.includes('purchases.xml.read') && {
         id: 'purchase-xml' as const,
@@ -175,7 +179,8 @@ export function AdminShell({
       id: 'roles' as const,
       label: 'Perfis e permissões',
     },
-  ].filter((item): item is NavigationItem => Boolean(item));
+  ];
+  const available = availableCandidates.filter((item): item is NavigationItem => Boolean(item));
   const [section, setSection] = useState<Section>(
     available.some(({ id }) => id === initialSection)
       ? initialSection!
@@ -272,6 +277,7 @@ export function AdminShell({
               canReadCredit={user.permissions.includes('sales.credit.read')}
               canReceiveCredit={user.permissions.includes('sales.credit.receive')}
               offlineScope={`${user.companyId}:${user.branchId}`}
+              onOpenSettings={() => setSection('settings')}
             />
           )}
           {section === 'cash' && (
@@ -289,7 +295,23 @@ export function AdminShell({
           {section === 'delivery' && (
             <DeliveryPanel
               canOperate={user.permissions.includes('logistics.deliveries.operate')}
-              canManage={user.permissions.includes('logistics.settings.manage')}
+            />
+          )}
+          {section === 'settings' && (
+            <SystemSettingsPanel
+              canManagePos={user.permissions.includes('sales.pos.settings.manage')}
+              canReadDelivery={user.permissions.includes('logistics.deliveries.read')}
+              canManageDelivery={user.permissions.includes('logistics.settings.manage')}
+              canReadWhatsapp={
+                user.modules.includes('integrations') &&
+                user.permissions.includes('integrations.whatsapp.read')
+              }
+              canManageWhatsapp={user.permissions.includes('integrations.whatsapp.manage')}
+              canSendWhatsapp={user.permissions.includes('integrations.whatsapp.send')}
+              destinations={(['subscription', 'branches', 'users', 'roles'] as const).filter(
+                (destination) => available.some(({ id }) => id === destination),
+              )}
+              onNavigate={setSection}
             />
           )}
           {section === 'stock' && (

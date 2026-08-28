@@ -1988,6 +1988,28 @@ th {
   gap: 13px;
   padding: 20px;
 }
+.pos-defaults {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #d9e8e5;
+  border-radius: 12px;
+  background: #f4faf8;
+}
+.pos-defaults span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.pos-defaults strong {
+  overflow: hidden;
+  color: var(--pos-ink);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pos-checkout label {
   display: grid;
   gap: 5px;
@@ -2285,6 +2307,89 @@ th {
 .delivery-settings form:last-child {
   grid-template-columns: repeat(6, 1fr);
 }
+
+.settings-header {
+  margin-bottom: 18px;
+}
+.settings-header h1 {
+  margin: 4px 0;
+  color: #173f3b;
+  font-size: clamp(28px, 3vw, 38px);
+}
+.settings-header p,
+.system-settings-card > header p {
+  margin: 0;
+  color: var(--muted);
+}
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  overflow-x: auto;
+}
+.settings-tabs button {
+  padding: 10px 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #365b57;
+  background: #fff;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.settings-tabs button.active {
+  border-color: #0f766e;
+  color: #fff;
+  background: #0f766e;
+}
+.system-settings-card {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(25 72 66 / 6%);
+}
+.system-settings-card > header h2 {
+  margin: 4px 0;
+  color: #173f3b;
+}
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.settings-destinations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.settings-destinations button {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: #173f3b;
+  background: #f8fbfa;
+  text-align: left;
+}
+.settings-destinations button:hover {
+  border-color: #7ebbb2;
+  background: #eef8f5;
+}
+.settings-destinations span {
+  color: var(--muted);
+  font-size: 12px;
+}
 @media (max-width: 1050px) {
   .delivery-create {
     grid-template-columns: 1fr 1fr;
@@ -2311,6 +2416,10 @@ th {
   }
   .delivery-settings h2 {
     grid-column: auto;
+  }
+  .settings-form,
+  .settings-destinations {
+    grid-template-columns: 1fr;
   }
 }
 

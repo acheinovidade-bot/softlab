@@ -993,6 +993,23 @@ model PaymentMethod {
   @@map("payment_methods")
 }
 
+model PosSetting {
+  id                String   @id @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  branchId          String   @map("branch_id") @db.Uuid
+  defaultCustomerId String?  @map("default_customer_id") @db.Uuid
+  defaultSellerId   String?  @map("default_seller_id") @db.Uuid
+  defaultLocationId String?  @map("default_location_id") @db.Uuid
+  createdBy         String   @map("created_by") @db.Uuid
+  updatedBy         String   @map("updated_by") @db.Uuid
+  createdAt         DateTime @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId])
+  @@index([companyId, branchId], map: "pos_settings_company_branch_idx")
+  @@map("pos_settings")
+}
+
 model Payment {
   id              String    @id @db.Uuid
   companyId       String    @map("company_id") @db.Uuid
