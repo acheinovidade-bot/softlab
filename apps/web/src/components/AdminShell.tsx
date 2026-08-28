@@ -40,6 +40,35 @@ export type Section =
   | 'branches'
   | 'users'
   | 'roles';
+
+type NavigationItem = { id: Section; label: string };
+
+const navigationGroups: Array<{
+  label: string;
+  sections: Section[];
+}> = [
+  {
+    label: 'Operação',
+    sections: ['sales-flow', 'sales-force', 'pos', 'cash', 'food', 'delivery'],
+  },
+  {
+    label: 'Cadastros',
+    sections: ['products', 'customers', 'suppliers', 'employees'],
+  },
+  {
+    label: 'Estoque e compras',
+    sections: ['stock', 'purchase-suggestions', 'quotations', 'purchase-xml'],
+  },
+  {
+    label: 'Produção e integrações',
+    sections: ['production', 'whatsapp'],
+  },
+  {
+    label: 'Administração',
+    sections: ['subscription', 'branches', 'users', 'roles'],
+  },
+];
+
 export function AdminShell({
   user,
   onLogout,
@@ -146,12 +175,21 @@ export function AdminShell({
       id: 'roles' as const,
       label: 'Perfis e permissões',
     },
-  ].filter((item): item is { id: Section; label: string } => Boolean(item));
+  ].filter((item): item is NavigationItem => Boolean(item));
   const [section, setSection] = useState<Section>(
     available.some(({ id }) => id === initialSection)
       ? initialSection!
       : (available[0]?.id ?? 'branches'),
   );
+  const groupedNavigation = navigationGroups
+    .map((group) => ({
+      ...group,
+      items: group.sections
+        .map((id) => available.find((item) => item.id === id))
+        .filter((item): item is NavigationItem => Boolean(item)),
+    }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -160,15 +198,27 @@ export function AdminShell({
           <strong>ERP Híbrido</strong>
           <span>Gestão empresarial</span>
         </div>
-        <nav>
-          {available.map((item) => (
-            <button
-              key={item.id}
-              className={section === item.id ? 'active' : ''}
-              onClick={() => setSection(item.id)}
-            >
-              {item.label}
-            </button>
+        <nav aria-label="Módulos do sistema">
+          {groupedNavigation.map((group) => (
+            <section className="sidebar-menu" key={group.label}>
+              <h2>{group.label}</h2>
+              <div className="sidebar-menu-items">
+                {group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={section === item.id ? 'active' : ''}
+                    aria-current={section === item.id ? 'page' : undefined}
+                    onClick={() => setSection(item.id)}
+                  >
+                    <span>{item.label}</span>
+                    <span className="menu-indicator" aria-hidden="true">
+                      ›
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
           ))}
         </nav>
       </aside>
