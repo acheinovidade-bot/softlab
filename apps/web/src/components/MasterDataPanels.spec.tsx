@@ -19,6 +19,16 @@ describe('CustomersPanel', () => {
     expect(await screen.findByText('Empresa sugerida')).toBeInTheDocument(); expect(legalName).toHaveValue('');
     fireEvent.click(screen.getByText('Aplicar sugestões')); expect(legalName).toHaveValue('Empresa sugerida');
   });
+
+  it('allows changing an existing customer from natural to legal person', async () => {
+    render(<CustomersPanel canManage />);
+    await screen.findByText('Ana Cliente');
+    fireEvent.click(screen.getByText('Editar'));
+    const type = screen.getByRole('combobox', { name: 'Tipo de pessoa' });
+    expect(type).toHaveValue('F');
+    fireEvent.change(type, { target: { value: 'J' } });
+    expect(type).toHaveValue('J');
+  });
 });
 
 describe('SuppliersPanel', () => {

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import { demoUser } from '../demo';
 import { AdminShell } from './AdminShell';
@@ -12,15 +12,14 @@ describe('AdminShell', () => {
     render(<AdminShell user={demoUser} onLogout={vi.fn()} initialSection="products" />);
 
     const navigation = screen.getByRole('navigation', { name: 'Módulos do sistema' });
-    expect(within(navigation).getByRole('heading', { name: 'Operação' })).toBeInTheDocument();
-    expect(within(navigation).getByRole('heading', { name: 'Cadastros' })).toBeInTheDocument();
-    expect(
-      within(navigation).getByRole('heading', { name: 'Estoque e compras' }),
-    ).toBeInTheDocument();
-    expect(within(navigation).getByRole('button', { name: 'PDV' })).toBeInTheDocument();
+    expect(within(navigation).getByRole('button', { name: 'Pessoas' })).toHaveAttribute('aria-expanded', 'false');
+    expect(within(navigation).getByRole('button', { name: 'Logística' })).toHaveAttribute('aria-expanded', 'true');
     expect(within(navigation).getByRole('button', { name: 'Produtos' })).toHaveAttribute(
       'aria-current',
       'page',
     );
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Frente de Caixa' }));
+    expect(within(navigation).getByRole('button', { name: 'PDV' })).toBeInTheDocument();
+    expect(within(navigation).queryByRole('button', { name: 'Produtos' })).not.toBeInTheDocument();
   });
 });

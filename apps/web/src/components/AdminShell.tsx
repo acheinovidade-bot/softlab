@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CurrentUser } from '@erp/contracts';
 import { BranchesPanel } from './BranchesPanel';
 import { RolesPanel } from './RolesPanel';
@@ -19,6 +19,7 @@ import { FoodServicePanel } from './FoodServicePanel';
 import { DeliveryPanel } from './DeliveryPanel';
 import { SalesForceApp } from './SalesForceApp';
 import { SystemSettingsPanel } from './SystemSettingsPanel';
+import { isWorkspaceSection, ModuleWorkspacePanel, type WorkspaceSection } from './ModuleWorkspacePanel';
 
 export type Section =
   | 'subscription'
@@ -41,7 +42,8 @@ export type Section =
   | 'employees'
   | 'branches'
   | 'users'
-  | 'roles';
+  | 'roles'
+  | WorkspaceSection;
 
 type NavigationItem = { id: Section; label: string };
 
@@ -50,24 +52,44 @@ const navigationGroups: Array<{
   sections: Section[];
 }> = [
   {
-    label: 'Operação',
-    sections: ['sales-flow', 'sales-force', 'pos', 'cash', 'food', 'delivery'],
+    label: 'Pessoas',
+    sections: ['customers', 'suppliers', 'employees', 'returns', 'loyalty'],
   },
   {
-    label: 'Cadastros',
-    sections: ['products', 'customers', 'suppliers', 'employees'],
+    label: 'Logística',
+    sections: ['products', 'stock', 'delivery'],
   },
   {
-    label: 'Estoque e compras',
-    sections: ['stock', 'purchase-suggestions', 'quotations', 'purchase-xml'],
+    label: 'Compras e Produção',
+    sections: ['purchase-orders', 'quotations', 'purchase-suggestions', 'production', 'purchase-analysis'],
   },
   {
-    label: 'Produção',
-    sections: ['production'],
+    label: 'Comercial',
+    sections: ['sales-flow', 'sales-force', 'consignments', 'pre-sales', 'invoicing', 'commissions', 'promotions'],
   },
   {
-    label: 'Administração',
-    sections: ['settings', 'subscription', 'branches', 'users', 'roles'],
+    label: 'Frente de Caixa',
+    sections: ['pos', 'pos-operations', 'cash', 'cash-tape', 'card-operators', 'payment-finalizers', 'food'],
+  },
+  {
+    label: 'Fiscal',
+    sections: ['fiscal-documents', 'fiscal-issuance', 'purchase-xml', 'inbound-nfe', 'tax-rules', 'ncm', 'operation-natures'],
+  },
+  {
+    label: 'Financeiro',
+    sections: ['payables', 'receivables', 'chart-accounts', 'receipts', 'pix-collection', 'digital-banks', 'banks', 'bank-movements'],
+  },
+  {
+    label: 'Ordem de Serviço',
+    sections: ['service-orders', 'services', 'service-objects', 'service-categories', 'service-groups'],
+  },
+  {
+    label: 'Relatórios',
+    sections: ['reports-summary', 'reports-customers', 'reports-products'],
+  },
+  {
+    label: 'Configurações',
+    sections: ['settings', 'company-registration', 'branches', 'users', 'roles', 'system-parameters', 'subscription', 'change-password', 'switch-branch'],
   },
 ];
 
@@ -90,7 +112,7 @@ export function AdminShell({
       user.permissions.includes('sales.quotes.read') &&
       user.permissions.includes('sales.orders.read') && {
         id: 'sales-flow' as const,
-        label: 'Vendas',
+        label: 'Pedidos de venda',
       },
     user.modules.includes('sales') &&
       user.permissions.includes('sales.quotes.manage') &&
@@ -106,7 +128,7 @@ export function AdminShell({
     user.modules.includes('finance') &&
       user.permissions.includes('finance.cash.read') && {
         id: 'cash' as const,
-        label: 'Caixa',
+        label: 'Fechamento de caixa',
       },
     user.modules.includes('food') &&
       user.permissions.includes('food.tables.read') && {
@@ -121,12 +143,12 @@ export function AdminShell({
     user.modules.includes('stock') &&
       user.permissions.includes('stock.inventory.read') && {
         id: 'stock' as const,
-        label: 'Estoque',
+        label: 'Movimentação de estoque',
       },
     user.modules.includes('purchases') &&
       user.permissions.includes('purchases.suggestions.read') && {
         id: 'purchase-suggestions' as const,
-        label: 'Sugestão de compra',
+        label: 'Sugestão de compras',
       },
     user.modules.includes('purchases') &&
       user.permissions.includes('purchases.quotations.read') && {
@@ -137,7 +159,7 @@ export function AdminShell({
       user.permissions.includes('production.orders.read') &&
       user.permissions.includes('production.engineering.read') && {
         id: 'production' as const,
-        label: 'Produção',
+        label: 'Ordens de produção',
       },
     (user.permissions.includes('sales.pos.use') ||
       user.permissions.includes('logistics.settings.manage') ||
@@ -180,6 +202,60 @@ export function AdminShell({
       label: 'Perfis e permissões',
     },
   ];
+  if (user.modules.includes('sales'))
+    availableCandidates.push(
+      { id: 'returns', label: 'Troca de mercadoria' },
+      { id: 'loyalty', label: 'Fidelidade' },
+      { id: 'consignments', label: 'Consignação' },
+      { id: 'pre-sales', label: 'Pré-venda' },
+      { id: 'invoicing', label: 'Faturamento' },
+      { id: 'commissions', label: 'Comissões' },
+      { id: 'promotions', label: 'Promoções' },
+      { id: 'pos-operations', label: 'Gerenciar operações' },
+      { id: 'cash-tape', label: 'Fita de caixa' },
+      { id: 'card-operators', label: 'Operadoras de cartões' },
+      { id: 'payment-finalizers', label: 'Finalizadores de pagamento' },
+    );
+  if (user.modules.includes('purchases'))
+    availableCandidates.push(
+      { id: 'purchase-orders', label: 'Ordens de compra' },
+      { id: 'purchase-analysis', label: 'Análise de compra' },
+    );
+  if (user.modules.includes('fiscal'))
+    availableCandidates.push(
+      { id: 'fiscal-documents', label: 'Documentos fiscais' },
+      { id: 'fiscal-issuance', label: 'Emissão de nota fiscal' },
+      { id: 'inbound-nfe', label: 'NF-e destinada' },
+      { id: 'tax-rules', label: 'Regras de tributação ICMS' },
+      { id: 'ncm', label: 'Cadastro de NCM' },
+      { id: 'operation-natures', label: 'Natureza de operação' },
+    );
+  if (user.modules.includes('finance'))
+    availableCandidates.push(
+      { id: 'payables', label: 'Contas a pagar' },
+      { id: 'receivables', label: 'Contas a receber' },
+      { id: 'chart-accounts', label: 'Plano de contas' },
+      { id: 'receipts', label: 'Gerar recibo' },
+      { id: 'pix-collection', label: 'Cobrança PIX' },
+      { id: 'digital-banks', label: 'Bancos digitais' },
+      { id: 'banks', label: 'Bancos' },
+      { id: 'bank-movements', label: 'Movimento bancário' },
+    );
+  if (user.modules.includes('core'))
+    availableCandidates.push(
+      { id: 'service-orders', label: 'Ordens de serviço' },
+      { id: 'services', label: 'Cadastro de serviços' },
+      { id: 'service-objects', label: 'Cadastro de objetos' },
+      { id: 'service-categories', label: 'Categorias' },
+      { id: 'service-groups', label: 'Grupos de serviços' },
+      { id: 'reports-summary', label: 'Sumário geral' },
+      { id: 'reports-customers', label: 'Clientes: compras e pagamentos' },
+      { id: 'reports-products', label: 'Produtos: custo, venda e lucro' },
+      { id: 'company-registration', label: 'Cadastro da empresa' },
+      { id: 'system-parameters', label: 'Parâmetros do sistema' },
+      { id: 'change-password', label: 'Alterar senha' },
+      { id: 'switch-branch', label: 'Trocar filial' },
+    );
   const available = availableCandidates.filter((item): item is NavigationItem => Boolean(item));
   const [section, setSection] = useState<Section>(
     available.some(({ id }) => id === initialSection)
@@ -194,6 +270,13 @@ export function AdminShell({
         .filter((item): item is NavigationItem => Boolean(item)),
     }))
     .filter((group) => group.items.length > 0);
+  const activeMenu = groupedNavigation.find((group) =>
+    group.items.some(({ id }) => id === section),
+  )?.label;
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(activeMenu ?? null);
+  useEffect(() => {
+    if (activeMenu) setExpandedMenu(activeMenu);
+  }, [activeMenu]);
 
   return (
     <div className="app-layout">
@@ -206,23 +289,33 @@ export function AdminShell({
         <nav aria-label="Módulos do sistema">
           {groupedNavigation.map((group) => (
             <section className="sidebar-menu" key={group.label}>
-              <h2>{group.label}</h2>
-              <div className="sidebar-menu-items">
-                {group.items.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={section === item.id ? 'active' : ''}
-                    aria-current={section === item.id ? 'page' : undefined}
-                    onClick={() => setSection(item.id)}
-                  >
-                    <span>{item.label}</span>
-                    <span className="menu-indicator" aria-hidden="true">
-                      ›
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                className={`sidebar-menu-toggle ${activeMenu === group.label ? 'has-active' : ''}`}
+                aria-expanded={expandedMenu === group.label}
+                onClick={() =>
+                  setExpandedMenu((current) => (current === group.label ? null : group.label))
+                }
+              >
+                <span>{group.label}</span>
+                <span aria-hidden="true">{expandedMenu === group.label ? '−' : '+'}</span>
+              </button>
+              {expandedMenu === group.label && (
+                <div className="sidebar-menu-items">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={section === item.id ? 'active' : ''}
+                      aria-current={section === item.id ? 'page' : undefined}
+                      onClick={() => setSection(item.id)}
+                    >
+                      <span>{item.label}</span>
+                      <span className="menu-indicator" aria-hidden="true">›</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
           ))}
         </nav>
@@ -238,6 +331,7 @@ export function AdminShell({
           </button>
         </header>
         <main className="content">
+          {isWorkspaceSection(section) && <ModuleWorkspacePanel section={section} />}
           {available.length === 0 && (
             <section className="empty">
               <h1>Sem módulos liberados</h1>

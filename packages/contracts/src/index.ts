@@ -258,6 +258,7 @@ export interface StockMovementSummary {
   product?: { id: string; code: string; description: string };
   location?: { id: string; code: string; name: string };
   lot: null | { id: string; lotNumber: string; expiresAt: string | null };
+  actor?: { id: string; displayName: string };
 }
 export interface StockLotOverviewItem {
   id: string;

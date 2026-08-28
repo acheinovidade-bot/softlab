@@ -1,49 +1,891 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BranchSummary, CepSuggestion, CnpjSuggestion, CustomerSummary, EmployeeSummary, PageResult, SupplierCatalogProduct, SupplierPriceComparison, SupplierProductLink, SupplierSummary } from '@erp/contracts';
+import type {
+  BranchSummary,
+  CepSuggestion,
+  CnpjSuggestion,
+  CustomerSummary,
+  EmployeeSummary,
+  PageResult,
+  SupplierCatalogProduct,
+  SupplierPriceComparison,
+  SupplierProductLink,
+  SupplierSummary,
+} from '@erp/contracts';
 import { apiRequest } from '../api';
 import { PageHeader } from './BranchesPanel';
 
-function value(data: FormData, name: string): string | undefined { const entry = data.get(name); const result = typeof entry === 'string' ? entry.trim() : ''; return result || undefined; }
+function value(data: FormData, name: string): string | undefined {
+  const entry = data.get(name);
+  const result = typeof entry === 'string' ? entry.trim() : '';
+  return result || undefined;
+}
 
 export function CustomersPanel({ canManage }: { canManage: boolean }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [result, setResult] = useState<PageResult<CustomerSummary>>({ items: [], total: 0, page: 1, pageSize: 20 }); const [creating, setCreating] = useState(false); const [error, setError] = useState('');
-  const [cnpjSuggestion, setCnpjSuggestion] = useState<CnpjSuggestion | null>(null); const [cepSuggestion, setCepSuggestion] = useState<CepSuggestion | null>(null); const [lookingUp, setLookingUp] = useState<'cnpj' | 'cep' | null>(null);
-  async function load(search = '') { try { setResult(await apiRequest<PageResult<CustomerSummary>>(`/master/customers?search=${encodeURIComponent(search)}`)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao carregar'); } }
-  useEffect(() => { void load(); }, []);
-  async function create(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await apiRequest('/master/customers', { method: 'POST', body: JSON.stringify({ personType: data.get('personType'), taxId: value(data, 'taxId'), legalName: data.get('legalName'), tradeName: value(data, 'tradeName'), phone: value(data, 'phone'), whatsapp: value(data, 'whatsapp'), email: value(data, 'email'), creditLimit: data.get('creditLimit') || 0, addresses: [{ type: 'main', isDefault: true, postalCode: value(data, 'postalCode'), street: data.get('street'), number: value(data, 'number'), complement: value(data, 'complement'), district: value(data, 'district'), city: data.get('city'), state: data.get('state'), country: 'BR' }] }) }); setCreating(false); setCnpjSuggestion(null); setCepSuggestion(null); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar'); } }
-  async function toggle(item: CustomerSummary) { try { await apiRequest(`/master/customers/${item.id}`, { method: 'PATCH', body: JSON.stringify({ active: !item.active }) }); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao atualizar'); } }
-  async function lookup(kind: 'cnpj' | 'cep') { const form = formRef.current; if (!form) return; const input = value(new FormData(form), kind === 'cnpj' ? 'taxId' : 'postalCode')?.replace(/\D/g, ''); if (!input) return setError(`Informe o ${kind.toUpperCase()}`); setLookingUp(kind); setError(''); try { if (kind === 'cnpj') setCnpjSuggestion(await apiRequest<CnpjSuggestion>(`/master/customers/enrichment/cnpj/${input}`)); else setCepSuggestion(await apiRequest<CepSuggestion>(`/master/customers/enrichment/cep/${input}`)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha na consulta'); } finally { setLookingUp(null); } }
-  function fill(fields: object) { const form = formRef.current; if (!form) return; for (const [name, content] of Object.entries(fields)) { if (typeof content !== 'string') continue; const control = form.elements.namedItem(name); if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement) control.value = content; } }
-  function applyCnpj() { const fields = cnpjSuggestion?.fields; if (!fields) return; fill({ personType: 'J', legalName: fields.legalName, tradeName: fields.tradeName, phone: fields.phone, email: fields.email, postalCode: fields.address?.postalCode, street: fields.address?.street, number: fields.address?.number, complement: fields.address?.complement, district: fields.address?.district, city: fields.address?.city, state: fields.address?.state }); setCnpjSuggestion(null); }
-  function applyCep() { if (cepSuggestion?.fields) fill(cepSuggestion.fields); setCepSuggestion(null); }
-  return <section><PageHeader title="Clientes" description="Pessoas físicas e jurídicas vinculadas à empresa." action={canManage ? () => setCreating(true) : undefined} /><Search onSearch={load} />{error && <div className="error">{error}</div>}{creating && <form ref={formRef} className="inline-form" onSubmit={(event) => void create(event)}><label>Tipo<select name="personType"><option value="F">Pessoa física</option><option value="J">Pessoa jurídica</option></select></label><label>CPF/CNPJ<input name="taxId" inputMode="numeric" /><button type="button" className="lookup-button" disabled={lookingUp !== null} onClick={() => void lookup('cnpj')}>{lookingUp === 'cnpj' ? 'Consultando…' : 'Consultar CNPJ'}</button></label><label>Nome / Razão social<input name="legalName" required /></label><label>Nome fantasia<input name="tradeName" /></label><label>Telefone<input name="phone" /></label><label>WhatsApp<input name="whatsapp" /></label><label>E-mail<input name="email" type="email" /></label><label>Limite de crédito<input name="creditLimit" type="number" min="0" step="0.01" defaultValue="0" /></label><label>CEP<input name="postalCode" inputMode="numeric" /><button type="button" className="lookup-button" disabled={lookingUp !== null} onClick={() => void lookup('cep')}>{lookingUp === 'cep' ? 'Consultando…' : 'Buscar CEP'}</button></label><label>Logradouro<input name="street" required /></label><label>Número<input name="number" /></label><label>Bairro<input name="district" /></label><label>Complemento<input name="complement" /></label><label>Cidade<input name="city" required /></label><label>UF<input name="state" maxLength={2} required /></label>{cnpjSuggestion && <EnrichmentSuggestion title="Sugestão para o CNPJ" found={cnpjSuggestion.found} details={cnpjSuggestion.fields ? [cnpjSuggestion.fields.legalName, cnpjSuggestion.fields.tradeName, cnpjSuggestion.fields.registrationStatus] : []} warnings={cnpjSuggestion.warnings} apply={applyCnpj} close={() => setCnpjSuggestion(null)} />}{cepSuggestion && <EnrichmentSuggestion title="Sugestão para o CEP" found={cepSuggestion.found} details={cepSuggestion.fields ? [cepSuggestion.fields.street, cepSuggestion.fields.district, `${cepSuggestion.fields.city ?? ''} ${cepSuggestion.fields.state ?? ''}`.trim()] : []} warnings={cepSuggestion.warnings} apply={applyCep} close={() => setCepSuggestion(null)} />}<Actions cancel={() => setCreating(false)} label="Salvar cliente" /></form>}<Table headers={['Cliente', 'Documento', 'Contato', 'Crédito', 'Status', '']} empty="Nenhum cliente encontrado.">{result.items.map((item) => <tr key={item.id}><td><strong>{item.tradeName || item.legalName}</strong></td><td>{item.taxId || '—'}</td><td>{item.whatsapp || item.phone || item.email || '—'}</td><td>R$ {Number(item.creditLimit).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td><Status active={item.active} /></td><td>{canManage && <button className="link" onClick={() => void toggle(item)}>{item.active ? 'Inativar' : 'Ativar'}</button>}</td></tr>)}</Table></section>;
+  const [result, setResult] = useState<PageResult<CustomerSummary>>({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+  });
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<CustomerSummary | null>(null);
+  const [error, setError] = useState('');
+  const [cnpjSuggestion, setCnpjSuggestion] = useState<CnpjSuggestion | null>(null);
+  const [cepSuggestion, setCepSuggestion] = useState<CepSuggestion | null>(null);
+  const [lookingUp, setLookingUp] = useState<'cnpj' | 'cep' | null>(null);
+  async function load(search = '') {
+    try {
+      setResult(
+        await apiRequest<PageResult<CustomerSummary>>(
+          `/master/customers?search=${encodeURIComponent(search)}`,
+        ),
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao carregar');
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+  async function create(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    try {
+      await apiRequest('/master/customers', {
+        method: 'POST',
+        body: JSON.stringify({
+          personType: data.get('personType'),
+          taxId: value(data, 'taxId'),
+          legalName: data.get('legalName'),
+          tradeName: value(data, 'tradeName'),
+          phone: value(data, 'phone'),
+          whatsapp: value(data, 'whatsapp'),
+          email: value(data, 'email'),
+          creditLimit: data.get('creditLimit') || 0,
+          addresses: [
+            {
+              type: 'main',
+              isDefault: true,
+              postalCode: value(data, 'postalCode'),
+              street: data.get('street'),
+              number: value(data, 'number'),
+              complement: value(data, 'complement'),
+              district: value(data, 'district'),
+              city: data.get('city'),
+              state: data.get('state'),
+              country: 'BR',
+            },
+          ],
+        }),
+      });
+      setCreating(false);
+      setCnpjSuggestion(null);
+      setCepSuggestion(null);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar');
+    }
+  }
+  async function toggle(item: CustomerSummary) {
+    try {
+      await apiRequest(`/master/customers/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active: !item.active }),
+      });
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao atualizar');
+    }
+  }
+  async function updateCustomer(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    const data = new FormData(event.currentTarget);
+    try {
+      await apiRequest(`/master/customers/${editing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          personType: data.get('personType'),
+          taxId: value(data, 'taxId') ?? null,
+          legalName: data.get('legalName'),
+          tradeName: value(data, 'tradeName') ?? null,
+          phone: value(data, 'phone') ?? null,
+          whatsapp: value(data, 'whatsapp') ?? null,
+          email: value(data, 'email') ?? null,
+          creditLimit: data.get('creditLimit') || 0,
+        }),
+      });
+      setEditing(null);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao atualizar cliente');
+    }
+  }
+  async function lookup(kind: 'cnpj' | 'cep') {
+    const form = formRef.current;
+    if (!form) return;
+    const input = value(new FormData(form), kind === 'cnpj' ? 'taxId' : 'postalCode')?.replace(
+      /\D/g,
+      '',
+    );
+    if (!input) return setError(`Informe o ${kind.toUpperCase()}`);
+    setLookingUp(kind);
+    setError('');
+    try {
+      if (kind === 'cnpj')
+        setCnpjSuggestion(
+          await apiRequest<CnpjSuggestion>(`/master/customers/enrichment/cnpj/${input}`),
+        );
+      else
+        setCepSuggestion(
+          await apiRequest<CepSuggestion>(`/master/customers/enrichment/cep/${input}`),
+        );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha na consulta');
+    } finally {
+      setLookingUp(null);
+    }
+  }
+  function fill(fields: object) {
+    const form = formRef.current;
+    if (!form) return;
+    for (const [name, content] of Object.entries(fields)) {
+      if (typeof content !== 'string') continue;
+      const control = form.elements.namedItem(name);
+      if (control instanceof HTMLInputElement || control instanceof HTMLSelectElement)
+        control.value = content;
+    }
+  }
+  function applyCnpj() {
+    const fields = cnpjSuggestion?.fields;
+    if (!fields) return;
+    fill({
+      personType: 'J',
+      legalName: fields.legalName,
+      tradeName: fields.tradeName,
+      phone: fields.phone,
+      email: fields.email,
+      postalCode: fields.address?.postalCode,
+      street: fields.address?.street,
+      number: fields.address?.number,
+      complement: fields.address?.complement,
+      district: fields.address?.district,
+      city: fields.address?.city,
+      state: fields.address?.state,
+    });
+    setCnpjSuggestion(null);
+  }
+  function applyCep() {
+    if (cepSuggestion?.fields) fill(cepSuggestion.fields);
+    setCepSuggestion(null);
+  }
+  return (
+    <section>
+      <PageHeader
+        title="Clientes"
+        description="Pessoas físicas e jurídicas vinculadas à empresa."
+        action={canManage ? () => setCreating(true) : undefined}
+      />
+      <Search onSearch={load} />
+      {error && <div className="error">{error}</div>}
+      {creating && (
+        <form ref={formRef} className="inline-form" onSubmit={(event) => void create(event)}>
+          <label>
+            Tipo
+            <select name="personType">
+              <option value="F">Pessoa física</option>
+              <option value="J">Pessoa jurídica</option>
+            </select>
+          </label>
+          <label>
+            CPF/CNPJ
+            <input name="taxId" inputMode="numeric" />
+            <button
+              type="button"
+              className="lookup-button"
+              disabled={lookingUp !== null}
+              onClick={() => void lookup('cnpj')}
+            >
+              {lookingUp === 'cnpj' ? 'Consultando…' : 'Consultar CNPJ'}
+            </button>
+          </label>
+          <label>
+            Nome / Razão social
+            <input name="legalName" required />
+          </label>
+          <label>
+            Nome fantasia
+            <input name="tradeName" />
+          </label>
+          <label>
+            Telefone
+            <input name="phone" />
+          </label>
+          <label>
+            WhatsApp
+            <input name="whatsapp" />
+          </label>
+          <label>
+            E-mail
+            <input name="email" type="email" />
+          </label>
+          <label>
+            Limite de crédito
+            <input name="creditLimit" type="number" min="0" step="0.01" defaultValue="0" />
+          </label>
+          <label>
+            CEP
+            <input name="postalCode" inputMode="numeric" />
+            <button
+              type="button"
+              className="lookup-button"
+              disabled={lookingUp !== null}
+              onClick={() => void lookup('cep')}
+            >
+              {lookingUp === 'cep' ? 'Consultando…' : 'Buscar CEP'}
+            </button>
+          </label>
+          <label>
+            Logradouro
+            <input name="street" required />
+          </label>
+          <label>
+            Número
+            <input name="number" />
+          </label>
+          <label>
+            Bairro
+            <input name="district" />
+          </label>
+          <label>
+            Complemento
+            <input name="complement" />
+          </label>
+          <label>
+            Cidade
+            <input name="city" required />
+          </label>
+          <label>
+            UF
+            <input name="state" maxLength={2} required />
+          </label>
+          {cnpjSuggestion && (
+            <EnrichmentSuggestion
+              title="Sugestão para o CNPJ"
+              found={cnpjSuggestion.found}
+              details={
+                cnpjSuggestion.fields
+                  ? [
+                      cnpjSuggestion.fields.legalName,
+                      cnpjSuggestion.fields.tradeName,
+                      cnpjSuggestion.fields.registrationStatus,
+                    ]
+                  : []
+              }
+              warnings={cnpjSuggestion.warnings}
+              apply={applyCnpj}
+              close={() => setCnpjSuggestion(null)}
+            />
+          )}
+          {cepSuggestion && (
+            <EnrichmentSuggestion
+              title="Sugestão para o CEP"
+              found={cepSuggestion.found}
+              details={
+                cepSuggestion.fields
+                  ? [
+                      cepSuggestion.fields.street,
+                      cepSuggestion.fields.district,
+                      `${cepSuggestion.fields.city ?? ''} ${cepSuggestion.fields.state ?? ''}`.trim(),
+                    ]
+                  : []
+              }
+              warnings={cepSuggestion.warnings}
+              apply={applyCep}
+              close={() => setCepSuggestion(null)}
+            />
+          )}
+          <Actions cancel={() => setCreating(false)} label="Salvar cliente" />
+        </form>
+      )}
+      {editing && (
+        <form className="inline-form" onSubmit={(event) => void updateCustomer(event)}>
+          <div className="wide-field">
+            <span className="eyebrow">EDITAR CLIENTE</span>
+            <h2>{editing.tradeName || editing.legalName}</h2>
+            <small>O tipo pode ser alterado mesmo depois da conclusão do cadastro.</small>
+          </div>
+          <label>
+            Tipo de pessoa
+            <select name="personType" defaultValue={editing.personType}>
+              <option value="F">Pessoa física</option>
+              <option value="J">Pessoa jurídica</option>
+            </select>
+          </label>
+          <label>CPF/CNPJ<input name="taxId" defaultValue={editing.taxId ?? ''} /></label>
+          <label>Nome / Razão social<input name="legalName" required defaultValue={editing.legalName} /></label>
+          <label>Nome fantasia<input name="tradeName" defaultValue={editing.tradeName ?? ''} /></label>
+          <label>Telefone<input name="phone" defaultValue={editing.phone ?? ''} /></label>
+          <label>WhatsApp<input name="whatsapp" defaultValue={editing.whatsapp ?? ''} /></label>
+          <label>E-mail<input name="email" type="email" defaultValue={editing.email ?? ''} /></label>
+          <label>Limite de crédito<input name="creditLimit" type="number" min="0" step="0.01" defaultValue={editing.creditLimit} /></label>
+          <Actions cancel={() => setEditing(null)} label="Salvar alterações" />
+        </form>
+      )}
+      <Table
+        headers={['Cliente', 'Tipo', 'Documento', 'Contato', 'Crédito', 'Status', '']}
+        empty="Nenhum cliente encontrado."
+      >
+        {result.items.map((item) => (
+          <tr key={item.id}>
+            <td>
+              <strong>{item.tradeName || item.legalName}</strong>
+            </td>
+            <td>{item.personType === 'J' ? 'Jurídica' : 'Física'}</td>
+            <td>{item.taxId || '—'}</td>
+            <td>{item.whatsapp || item.phone || item.email || '—'}</td>
+            <td>
+              R$ {Number(item.creditLimit).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </td>
+            <td>
+              <Status active={item.active} />
+            </td>
+            <td>
+              {canManage && (
+                <div className="row-actions">
+                  <button className="link" onClick={() => setEditing(item)}>Editar</button>
+                  <button className="link" onClick={() => void toggle(item)}>
+                    {item.active ? 'Inativar' : 'Ativar'}
+                  </button>
+                </div>
+              )}
+            </td>
+          </tr>
+        ))}
+      </Table>
+    </section>
+  );
 }
 
 export function SuppliersPanel({ canManage }: { canManage: boolean }) {
-  const [result, setResult] = useState<PageResult<SupplierSummary>>({ items: [], total: 0, page: 1, pageSize: 20 }); const [creating, setCreating] = useState(false); const [error, setError] = useState('');
-  const [catalog, setCatalog] = useState<SupplierCatalogProduct[]>([]); const [editingSupplier, setEditingSupplier] = useState<SupplierSummary | null>(null); const [links, setLinks] = useState<Array<Pick<SupplierProductLink, 'productId' | 'supplierCode' | 'supplierDescription'>>>([]); const [comparison, setComparison] = useState<SupplierPriceComparison | null>(null);
-  async function load(search = '') { try { const [suppliers, products] = await Promise.all([apiRequest<PageResult<SupplierSummary>>(`/master/suppliers?search=${encodeURIComponent(search)}`), apiRequest<SupplierCatalogProduct[]>('/master/supplier-products/catalog')]); setResult(suppliers); setCatalog(products); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao carregar'); } } useEffect(() => { void load(); }, []);
-  async function create(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await apiRequest('/master/suppliers', { method: 'POST', body: JSON.stringify({ taxId: value(data, 'taxId'), legalName: data.get('legalName'), tradeName: value(data, 'tradeName'), email: value(data, 'email'), phone: value(data, 'phone'), averageLeadDays: value(data, 'averageLeadDays'), paymentTerms: value(data, 'paymentTerms') }) }); setCreating(false); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar'); } }
-  async function toggle(item: SupplierSummary) { try { await apiRequest(`/master/suppliers/${item.id}`, { method: 'PATCH', body: JSON.stringify({ active: !item.active }) }); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao atualizar'); } }
-  async function editProducts(supplier: SupplierSummary) { try { const [products, current] = await Promise.all([apiRequest<SupplierCatalogProduct[]>('/master/supplier-products/catalog'), apiRequest<SupplierProductLink[]>(`/master/supplier-products/supplier/${supplier.id}`)]); setCatalog(products); setLinks(current.map(({ productId, supplierCode, supplierDescription }) => ({ productId, supplierCode, supplierDescription }))); setEditingSupplier(supplier); setComparison(null); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao carregar catálogo do fornecedor'); } }
-  function toggleProduct(productId: string) { setLinks((current) => current.some((item) => item.productId === productId) ? current.filter((item) => item.productId !== productId) : [...current, { productId, supplierCode: null, supplierDescription: null }]); }
-  function changeLink(productId: string, field: 'supplierCode' | 'supplierDescription', content: string) { setLinks((current) => current.map((item) => item.productId === productId ? { ...item, [field]: content.trim() || null } : item)); }
-  async function saveProducts() { if (!editingSupplier) return; try { await apiRequest(`/master/supplier-products/supplier/${editingSupplier.id}`, { method: 'PUT', body: JSON.stringify({ products: links }) }); setEditingSupplier(null); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar produtos do fornecedor'); } }
-  async function compare(productId: string) { if (!productId) return setComparison(null); try { setComparison(await apiRequest<SupplierPriceComparison>(`/master/supplier-products/comparison/${productId}`)); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao comparar preços'); } }
-  return <section><PageHeader title="Fornecedores" description="Dados fiscais, contatos, catálogo e condições comerciais." action={canManage ? () => setCreating(true) : undefined} /><Search onSearch={load} />{error && <div className="error">{error}</div>}{creating && <form className="inline-form" onSubmit={(event) => void create(event)}><label>CNPJ/CPF<input name="taxId" /></label><label>Razão social<input name="legalName" required /></label><label>Nome fantasia<input name="tradeName" /></label><label>E-mail<input name="email" type="email" /></label><label>Telefone<input name="phone" /></label><label>Prazo médio (dias)<input name="averageLeadDays" type="number" min="0" /></label><label>Condição de pagamento<input name="paymentTerms" /></label><Actions cancel={() => setCreating(false)} label="Salvar fornecedor" /></form>}{editingSupplier && <aside className="suggestion-card supplier-catalog"><strong>Produtos fornecidos por {editingSupplier.tradeName || editingSupplier.legalName}</strong>{catalog.length === 0 && <p>Nenhum produto ativo no catálogo.</p>}{catalog.map((product) => { const link = links.find(({ productId }) => productId === product.id); return <div className="supplier-product-row" key={product.id}><label className="option"><input type="checkbox" checked={Boolean(link)} onChange={() => toggleProduct(product.id)} />{product.code} · {product.description}</label>{link && <><input aria-label={`Código de ${product.description}`} placeholder="Código no fornecedor" value={link.supplierCode ?? ''} onChange={(event) => changeLink(product.id, 'supplierCode', event.target.value)} /><input aria-label={`Descrição de ${product.description}`} placeholder="Descrição do fornecedor" value={link.supplierDescription ?? ''} onChange={(event) => changeLink(product.id, 'supplierDescription', event.target.value)} /></>}</div>; })}<div className="suggestion-actions"><button type="button" className="primary" onClick={() => void saveProducts()}>Salvar vínculos</button><button type="button" className="quiet" onClick={() => setEditingSupplier(null)}>Cancelar</button></div></aside>}<div className="search-bar supplier-comparison"><select aria-label="Produto para comparar" defaultValue="" onChange={(event) => void compare(event.target.value)}><option value="">Comparar preços por produto</option>{catalog.map((product) => <option key={product.id} value={product.id}>{product.code} · {product.description}</option>)}</select></div>{comparison && <aside className="suggestion-card"><strong>Comparação: {comparison.product.description}</strong><p>{comparison.note}</p><Table headers={['Fornecedor', 'Último preço', 'Prazo médio', 'Código']} empty="Nenhum fornecedor vinculado.">{comparison.offers.map((offer) => <tr key={offer.supplier.id}><td>{offer.supplier.tradeName || offer.supplier.legalName}</td><td>{offer.lastPrice === null ? 'Sem preço registrado' : `R$ ${Number(offer.lastPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}</td><td>{offer.supplier.averageLeadDays === null ? '—' : `${offer.supplier.averageLeadDays} dias`}</td><td>{offer.supplierCode || '—'}</td></tr>)}</Table></aside>}<Table headers={['Fornecedor', 'Documento', 'Contato', 'Prazo', 'Status', '']} empty="Nenhum fornecedor encontrado.">{result.items.map((item) => <tr key={item.id}><td><strong>{item.tradeName || item.legalName}</strong></td><td>{item.taxId || '—'}</td><td>{item.phone || item.email || '—'}</td><td>{item.averageLeadDays == null ? '—' : `${item.averageLeadDays} dias`}</td><td><Status active={item.active} /></td><td>{canManage && <><button className="link" onClick={() => void editProducts(item)}>Produtos</button><button className="link" onClick={() => void toggle(item)}>{item.active ? 'Inativar' : 'Ativar'}</button></>}</td></tr>)}</Table></section>;
+  const [result, setResult] = useState<PageResult<SupplierSummary>>({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+  });
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+  const [catalog, setCatalog] = useState<SupplierCatalogProduct[]>([]);
+  const [editingSupplier, setEditingSupplier] = useState<SupplierSummary | null>(null);
+  const [links, setLinks] = useState<
+    Array<Pick<SupplierProductLink, 'productId' | 'supplierCode' | 'supplierDescription'>>
+  >([]);
+  const [comparison, setComparison] = useState<SupplierPriceComparison | null>(null);
+  async function load(search = '') {
+    try {
+      const [suppliers, products] = await Promise.all([
+        apiRequest<PageResult<SupplierSummary>>(
+          `/master/suppliers?search=${encodeURIComponent(search)}`,
+        ),
+        apiRequest<SupplierCatalogProduct[]>('/master/supplier-products/catalog'),
+      ]);
+      setResult(suppliers);
+      setCatalog(products);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao carregar');
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+  async function create(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    try {
+      await apiRequest('/master/suppliers', {
+        method: 'POST',
+        body: JSON.stringify({
+          taxId: value(data, 'taxId'),
+          legalName: data.get('legalName'),
+          tradeName: value(data, 'tradeName'),
+          email: value(data, 'email'),
+          phone: value(data, 'phone'),
+          averageLeadDays: value(data, 'averageLeadDays'),
+          paymentTerms: value(data, 'paymentTerms'),
+        }),
+      });
+      setCreating(false);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar');
+    }
+  }
+  async function toggle(item: SupplierSummary) {
+    try {
+      await apiRequest(`/master/suppliers/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active: !item.active }),
+      });
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao atualizar');
+    }
+  }
+  async function editProducts(supplier: SupplierSummary) {
+    try {
+      const [products, current] = await Promise.all([
+        apiRequest<SupplierCatalogProduct[]>('/master/supplier-products/catalog'),
+        apiRequest<SupplierProductLink[]>(`/master/supplier-products/supplier/${supplier.id}`),
+      ]);
+      setCatalog(products);
+      setLinks(
+        current.map(({ productId, supplierCode, supplierDescription }) => ({
+          productId,
+          supplierCode,
+          supplierDescription,
+        })),
+      );
+      setEditingSupplier(supplier);
+      setComparison(null);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : 'Falha ao carregar catálogo do fornecedor',
+      );
+    }
+  }
+  function toggleProduct(productId: string) {
+    setLinks((current) =>
+      current.some((item) => item.productId === productId)
+        ? current.filter((item) => item.productId !== productId)
+        : [...current, { productId, supplierCode: null, supplierDescription: null }],
+    );
+  }
+  function changeLink(
+    productId: string,
+    field: 'supplierCode' | 'supplierDescription',
+    content: string,
+  ) {
+    setLinks((current) =>
+      current.map((item) =>
+        item.productId === productId ? { ...item, [field]: content.trim() || null } : item,
+      ),
+    );
+  }
+  async function saveProducts() {
+    if (!editingSupplier) return;
+    try {
+      await apiRequest(`/master/supplier-products/supplier/${editingSupplier.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ products: links }),
+      });
+      setEditingSupplier(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar produtos do fornecedor');
+    }
+  }
+  async function compare(productId: string) {
+    if (!productId) return setComparison(null);
+    try {
+      setComparison(
+        await apiRequest<SupplierPriceComparison>(
+          `/master/supplier-products/comparison/${productId}`,
+        ),
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao comparar preços');
+    }
+  }
+  return (
+    <section>
+      <PageHeader
+        title="Fornecedores"
+        description="Dados fiscais, contatos, catálogo e condições comerciais."
+        action={canManage ? () => setCreating(true) : undefined}
+      />
+      <Search onSearch={load} />
+      {error && <div className="error">{error}</div>}
+      {creating && (
+        <form className="inline-form" onSubmit={(event) => void create(event)}>
+          <label>
+            CNPJ/CPF
+            <input name="taxId" />
+          </label>
+          <label>
+            Razão social
+            <input name="legalName" required />
+          </label>
+          <label>
+            Nome fantasia
+            <input name="tradeName" />
+          </label>
+          <label>
+            E-mail
+            <input name="email" type="email" />
+          </label>
+          <label>
+            Telefone
+            <input name="phone" />
+          </label>
+          <label>
+            Prazo médio (dias)
+            <input name="averageLeadDays" type="number" min="0" />
+          </label>
+          <label>
+            Condição de pagamento
+            <input name="paymentTerms" />
+          </label>
+          <Actions cancel={() => setCreating(false)} label="Salvar fornecedor" />
+        </form>
+      )}
+      {editingSupplier && (
+        <aside className="suggestion-card supplier-catalog">
+          <strong>
+            Produtos fornecidos por {editingSupplier.tradeName || editingSupplier.legalName}
+          </strong>
+          {catalog.length === 0 && <p>Nenhum produto ativo no catálogo.</p>}
+          {catalog.map((product) => {
+            const link = links.find(({ productId }) => productId === product.id);
+            return (
+              <div className="supplier-product-row" key={product.id}>
+                <label className="option">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(link)}
+                    onChange={() => toggleProduct(product.id)}
+                  />
+                  {product.code} · {product.description}
+                </label>
+                {link && (
+                  <>
+                    <input
+                      aria-label={`Código de ${product.description}`}
+                      placeholder="Código no fornecedor"
+                      value={link.supplierCode ?? ''}
+                      onChange={(event) =>
+                        changeLink(product.id, 'supplierCode', event.target.value)
+                      }
+                    />
+                    <input
+                      aria-label={`Descrição de ${product.description}`}
+                      placeholder="Descrição do fornecedor"
+                      value={link.supplierDescription ?? ''}
+                      onChange={(event) =>
+                        changeLink(product.id, 'supplierDescription', event.target.value)
+                      }
+                    />
+                  </>
+                )}
+              </div>
+            );
+          })}
+          <div className="suggestion-actions">
+            <button type="button" className="primary" onClick={() => void saveProducts()}>
+              Salvar vínculos
+            </button>
+            <button type="button" className="quiet" onClick={() => setEditingSupplier(null)}>
+              Cancelar
+            </button>
+          </div>
+        </aside>
+      )}
+      <div className="search-bar supplier-comparison">
+        <select
+          aria-label="Produto para comparar"
+          defaultValue=""
+          onChange={(event) => void compare(event.target.value)}
+        >
+          <option value="">Comparar preços por produto</option>
+          {catalog.map((product) => (
+            <option key={product.id} value={product.id}>
+              {product.code} · {product.description}
+            </option>
+          ))}
+        </select>
+      </div>
+      {comparison && (
+        <aside className="suggestion-card">
+          <strong>Comparação: {comparison.product.description}</strong>
+          <p>{comparison.note}</p>
+          <Table
+            headers={['Fornecedor', 'Último preço', 'Prazo médio', 'Código']}
+            empty="Nenhum fornecedor vinculado."
+          >
+            {comparison.offers.map((offer) => (
+              <tr key={offer.supplier.id}>
+                <td>{offer.supplier.tradeName || offer.supplier.legalName}</td>
+                <td>
+                  {offer.lastPrice === null
+                    ? 'Sem preço registrado'
+                    : `R$ ${Number(offer.lastPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                </td>
+                <td>
+                  {offer.supplier.averageLeadDays === null
+                    ? '—'
+                    : `${offer.supplier.averageLeadDays} dias`}
+                </td>
+                <td>{offer.supplierCode || '—'}</td>
+              </tr>
+            ))}
+          </Table>
+        </aside>
+      )}
+      <Table
+        headers={['Fornecedor', 'Documento', 'Contato', 'Prazo', 'Status', '']}
+        empty="Nenhum fornecedor encontrado."
+      >
+        {result.items.map((item) => (
+          <tr key={item.id}>
+            <td>
+              <strong>{item.tradeName || item.legalName}</strong>
+            </td>
+            <td>{item.taxId || '—'}</td>
+            <td>{item.phone || item.email || '—'}</td>
+            <td>{item.averageLeadDays == null ? '—' : `${item.averageLeadDays} dias`}</td>
+            <td>
+              <Status active={item.active} />
+            </td>
+            <td>
+              {canManage && (
+                <>
+                  <button className="link" onClick={() => void editProducts(item)}>
+                    Produtos
+                  </button>
+                  <button className="link" onClick={() => void toggle(item)}>
+                    {item.active ? 'Inativar' : 'Ativar'}
+                  </button>
+                </>
+              )}
+            </td>
+          </tr>
+        ))}
+      </Table>
+    </section>
+  );
 }
 
 export function EmployeesPanel({ canManage }: { canManage: boolean }) {
-  const [result, setResult] = useState<PageResult<EmployeeSummary>>({ items: [], total: 0, page: 1, pageSize: 20 }); const [branches, setBranches] = useState<BranchSummary[]>([]); const [creating, setCreating] = useState(false); const [error, setError] = useState('');
-  async function load(search = '') { try { const [items, nextBranches] = await Promise.all([apiRequest<PageResult<EmployeeSummary>>(`/master/employees?search=${encodeURIComponent(search)}`), apiRequest<BranchSummary[]>('/admin/branches')]); setResult(items); setBranches(nextBranches); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao carregar'); } } useEffect(() => { void load(); }, []);
-  async function create(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await apiRequest('/master/employees', { method: 'POST', body: JSON.stringify({ code: data.get('code'), name: data.get('name'), taxId: value(data, 'taxId'), jobTitle: value(data, 'jobTitle'), branchId: value(data, 'branchId') }) }); setCreating(false); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar'); } }
-  async function toggle(item: EmployeeSummary) { try { await apiRequest(`/master/employees/${item.id}`, { method: 'PATCH', body: JSON.stringify({ active: !item.active }) }); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao atualizar'); } }
-  return <section><PageHeader title="Funcionários" description="Equipe, função e unidade de atuação." action={canManage ? () => setCreating(true) : undefined} /><Search onSearch={load} />{error && <div className="error">{error}</div>}{creating && <form className="inline-form" onSubmit={(event) => void create(event)}><label>Código<input name="code" required /></label><label>Nome<input name="name" required /></label><label>CPF<input name="taxId" /></label><label>Cargo<input name="jobTitle" /></label><label>Filial<select name="branchId"><option value="">Todas / não definida</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.code}</option>)}</select></label><Actions cancel={() => setCreating(false)} label="Salvar funcionário" /></form>}<Table headers={['Código', 'Funcionário', 'Cargo', 'Filial', 'Status', '']} empty="Nenhum funcionário encontrado.">{result.items.map((item) => <tr key={item.id}><td><strong>{item.code}</strong></td><td>{item.name}</td><td>{item.jobTitle || '—'}</td><td>{branches.find(({ id }) => id === item.branchId)?.code || '—'}</td><td><Status active={item.active} /></td><td>{canManage && <button className="link" onClick={() => void toggle(item)}>{item.active ? 'Inativar' : 'Ativar'}</button>}</td></tr>)}</Table></section>;
+  const [result, setResult] = useState<PageResult<EmployeeSummary>>({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+  });
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+  async function load(search = '') {
+    try {
+      const [items, nextBranches] = await Promise.all([
+        apiRequest<PageResult<EmployeeSummary>>(
+          `/master/employees?search=${encodeURIComponent(search)}`,
+        ),
+        apiRequest<BranchSummary[]>('/admin/branches'),
+      ]);
+      setResult(items);
+      setBranches(nextBranches);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao carregar');
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+  async function create(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    try {
+      await apiRequest('/master/employees', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: data.get('code'),
+          name: data.get('name'),
+          taxId: value(data, 'taxId'),
+          jobTitle: value(data, 'jobTitle'),
+          branchId: value(data, 'branchId'),
+        }),
+      });
+      setCreating(false);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar');
+    }
+  }
+  async function toggle(item: EmployeeSummary) {
+    try {
+      await apiRequest(`/master/employees/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active: !item.active }),
+      });
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao atualizar');
+    }
+  }
+  return (
+    <section>
+      <PageHeader
+        title="Funcionários"
+        description="Equipe, função e unidade de atuação."
+        action={canManage ? () => setCreating(true) : undefined}
+      />
+      <Search onSearch={load} />
+      {error && <div className="error">{error}</div>}
+      {creating && (
+        <form className="inline-form" onSubmit={(event) => void create(event)}>
+          <label>
+            Código
+            <input name="code" required />
+          </label>
+          <label>
+            Nome
+            <input name="name" required />
+          </label>
+          <label>
+            CPF
+            <input name="taxId" />
+          </label>
+          <label>
+            Cargo
+            <input name="jobTitle" />
+          </label>
+          <label>
+            Filial
+            <select name="branchId">
+              <option value="">Todas / não definida</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.code}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Actions cancel={() => setCreating(false)} label="Salvar funcionário" />
+        </form>
+      )}
+      <Table
+        headers={['Código', 'Funcionário', 'Cargo', 'Filial', 'Status', '']}
+        empty="Nenhum funcionário encontrado."
+      >
+        {result.items.map((item) => (
+          <tr key={item.id}>
+            <td>
+              <strong>{item.code}</strong>
+            </td>
+            <td>{item.name}</td>
+            <td>{item.jobTitle || '—'}</td>
+            <td>{branches.find(({ id }) => id === item.branchId)?.code || '—'}</td>
+            <td>
+              <Status active={item.active} />
+            </td>
+            <td>
+              {canManage && (
+                <button className="link" onClick={() => void toggle(item)}>
+                  {item.active ? 'Inativar' : 'Ativar'}
+                </button>
+              )}
+            </td>
+          </tr>
+        ))}
+      </Table>
+    </section>
+  );
 }
 
-function Search({ onSearch }: { onSearch: (search: string) => Promise<void> }) { return <form className="search-bar" onSubmit={(event) => { event.preventDefault(); void onSearch(value(new FormData(event.currentTarget), 'search') ?? ''); }}><input name="search" placeholder="Pesquisar por nome, documento ou código" /><button className="quiet">Pesquisar</button></form>; }
-function EnrichmentSuggestion({ title, found, details, warnings, apply, close }: { title: string; found: boolean; details: Array<string | null>; warnings: string[]; apply: () => void; close: () => void }) { return <aside className="suggestion-card"><strong>{title}</strong>{found ? <ul>{details.filter(Boolean).map((detail) => <li key={detail}>{detail}</li>)}</ul> : <p>Nenhum dado localizado.</p>}{warnings.map((warning) => <small key={warning}>{warning}</small>)}<div className="suggestion-actions">{found && <button type="button" className="primary" onClick={apply}>Aplicar sugestões</button>}<button type="button" className="quiet" onClick={close}>Fechar</button></div></aside>; }
-function Actions({ cancel, label }: { cancel: () => void; label: string }) { return <div className="form-actions"><button type="button" className="quiet" onClick={cancel}>Cancelar</button><button className="primary">{label}</button></div>; }
-function Status({ active }: { active: boolean }) { return <span className={`badge ${active ? 'active' : ''}`}>{active ? 'Ativo' : 'Inativo'}</span>; }
-function Table({ headers, empty, children }: { headers: string[]; empty: string; children: React.ReactNode }) { const hasRows = Array.isArray(children) ? children.length > 0 : Boolean(children); return <div className="table-card"><table><thead><tr>{headers.map((header, index) => <th key={`${header}-${index}`}>{header}</th>)}</tr></thead><tbody>{children}</tbody></table>{!hasRows && <div className="empty-row">{empty}</div>}</div>; }
+function Search({ onSearch }: { onSearch: (search: string) => Promise<void> }) {
+  return (
+    <form
+      className="search-bar"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSearch(value(new FormData(event.currentTarget), 'search') ?? '');
+      }}
+    >
+      <input name="search" placeholder="Pesquisar por nome, documento ou código" />
+      <button className="quiet">Pesquisar</button>
+    </form>
+  );
+}
+function EnrichmentSuggestion({
+  title,
+  found,
+  details,
+  warnings,
+  apply,
+  close,
+}: {
+  title: string;
+  found: boolean;
+  details: Array<string | null>;
+  warnings: string[];
+  apply: () => void;
+  close: () => void;
+}) {
+  return (
+    <aside className="suggestion-card">
+      <strong>{title}</strong>
+      {found ? (
+        <ul>
+          {details.filter(Boolean).map((detail) => (
+            <li key={detail}>{detail}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>Nenhum dado localizado.</p>
+      )}
+      {warnings.map((warning) => (
+        <small key={warning}>{warning}</small>
+      ))}
+      <div className="suggestion-actions">
+        {found && (
+          <button type="button" className="primary" onClick={apply}>
+            Aplicar sugestões
+          </button>
+        )}
+        <button type="button" className="quiet" onClick={close}>
+          Fechar
+        </button>
+      </div>
+    </aside>
+  );
+}
+function Actions({ cancel, label }: { cancel: () => void; label: string }) {
+  return (
+    <div className="form-actions">
+      <button type="button" className="quiet" onClick={cancel}>
+        Cancelar
+      </button>
+      <button className="primary">{label}</button>
+    </div>
+  );
+}
+function Status({ active }: { active: boolean }) {
+  return <span className={`badge ${active ? 'active' : ''}`}>{active ? 'Ativo' : 'Inativo'}</span>;
+}
+function Table({
+  headers,
+  empty,
+  children,
+}: {
+  headers: string[];
+  empty: string;
+  children: React.ReactNode;
+}) {
+  const hasRows = Array.isArray(children) ? children.length > 0 : Boolean(children);
+  return (
+    <div className="table-card">
+      <table>
+        <thead>
+          <tr>
+            {headers.map((header, index) => (
+              <th key={`${header}-${index}`}>{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+      {!hasRows && <div className="empty-row">{empty}</div>}
+    </div>
+  );
+}
