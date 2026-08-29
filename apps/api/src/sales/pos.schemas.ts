@@ -25,6 +25,7 @@ export const posCheckoutSchema = z
         z.object({
           paymentMethodId: z.string().uuid(),
           amount: z.coerce.number().positive().max(999_999_999),
+          installments: z.coerce.number().int().min(1).max(48).default(1),
         }),
       )
       .min(1)

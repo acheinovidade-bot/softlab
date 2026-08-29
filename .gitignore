@@ -10,3 +10,4 @@ coverage/
 work/
 apps/web/vite.config.js
 apps/api/prisma/*.db
+artifacts/

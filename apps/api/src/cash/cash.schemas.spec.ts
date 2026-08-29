@@ -1,4 +1,10 @@
-import { cashMovementSchema, closeCashSchema, openCashSchema } from './cash.schemas';
+import {
+  cardOperatorSchema,
+  cashMovementSchema,
+  closeCashSchema,
+  openCashSchema,
+  paymentMethodSchema,
+} from './cash.schemas';
 
 const id = (suffix: string) => `018f4f12-2222-7222-8222-${suffix.padStart(12, '0')}`;
 describe('cash schemas', () => {
@@ -16,5 +22,24 @@ describe('cash schemas', () => {
     expect(() => closeCashSchema.parse({ counts: [row, row] })).toThrow(
       'Forma de pagamento repetida',
     );
+  });
+  it('normalizes card operators and payment finalizers', () => {
+    expect(
+      cardOperatorSchema.parse({
+        code: ' rede ',
+        name: 'Rede',
+        taxId: '01.027.058/0001-91',
+        debitRate: '1.49',
+        creditRate: '2.89',
+      }),
+    ).toMatchObject({ code: 'REDE', taxId: '01027058000191', debitRate: 1.49 });
+    expect(
+      paymentMethodSchema.parse({
+        code: 'credito',
+        name: 'Cartão de crédito',
+        type: 'credit_card',
+        maxInstallments: '12',
+      }),
+    ).toMatchObject({ code: 'CREDITO', maxInstallments: 12, fiscalCode: '99' });
   });
 });

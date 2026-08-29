@@ -157,6 +157,20 @@ export function demoResponse(path: string): unknown {
           name: 'Crediário',
           type: 'credit_account',
         },
+        {
+          id: '018f4f12-2222-7222-8222-000000000304',
+          code: 'CREDITO',
+          name: 'Cartão de crédito',
+          type: 'credit_card',
+          maxInstallments: 12,
+          cardConfiguration: {
+            operatorName: 'Rede',
+            debitRate: '1.49',
+            creditRate: '2.89',
+            installmentRate: '0.35',
+            settlementDays: 30,
+          },
+        },
       ],
       locations: [
         { id: '018f4f12-2222-7222-8222-000000000401', code: 'LOJA', name: 'Estoque da loja' },
@@ -200,6 +214,59 @@ export function demoResponse(path: string): unknown {
       defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
       defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
     };
+  if (path === '/cash/configuration')
+    return {
+      cardOperators: [
+        {
+          id: '018f4f12-2222-7222-8222-000000000701',
+          code: 'REDE',
+          name: 'Rede',
+          taxId: '01027058000191',
+          debitRate: '1.49',
+          creditRate: '2.89',
+          installmentRate: '0.35',
+          settlementDays: 30,
+          active: true,
+        },
+      ],
+      paymentMethods: [
+        {
+          id: '018f4f12-2222-7222-8222-000000000301',
+          code: 'DINHEIRO',
+          name: 'Dinheiro',
+          type: 'cash',
+          fiscalCode: '01',
+          cardOperatorId: null,
+          maxInstallments: 1,
+          createsReceivable: false,
+          active: true,
+        },
+        {
+          id: '018f4f12-2222-7222-8222-000000000302',
+          code: 'PIX',
+          name: 'PIX',
+          type: 'pix',
+          fiscalCode: '17',
+          cardOperatorId: null,
+          maxInstallments: 1,
+          createsReceivable: false,
+          active: true,
+        },
+        {
+          id: '018f4f12-2222-7222-8222-000000000304',
+          code: 'CREDITO',
+          name: 'Cartão de crédito',
+          type: 'credit_card',
+          fiscalCode: '03',
+          cardOperatorId: '018f4f12-2222-7222-8222-000000000701',
+          maxInstallments: 12,
+          createsReceivable: true,
+          active: true,
+        },
+      ],
+    };
+  if (path.startsWith('/cash/card-operators') || path.startsWith('/cash/payment-methods'))
+    return { ok: true };
   if (path === '/food/overview')
     return {
       tables: Array.from({ length: 12 }, (_, index) => ({

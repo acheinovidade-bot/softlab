@@ -679,7 +679,9 @@ select:focus {
   line-height: 1;
   opacity: 0;
   transform: translateX(-4px);
-  transition: opacity 0.16s ease, transform 0.16s ease;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
 }
 .sidebar nav button:hover,
 .sidebar nav button.active {
@@ -2451,6 +2453,26 @@ th {
   border: 1px dashed #8fbdb6;
   border-radius: 14px;
   background: #f2faf8;
+}
+.payment-config-form {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+.payment-config-form .form-actions {
+  grid-column: 1 / -1;
+}
+.table-card td small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+}
+.pos-net-amount {
+  display: block;
+  margin: -0.2rem 0 0.65rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.55rem;
+  background: #ecfdf3;
+  color: #166534;
+  font-weight: 700;
 }
 @media (max-width: 1050px) {
   .delivery-create {

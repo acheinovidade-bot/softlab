@@ -4,15 +4,109 @@ import type { AccessTokenPayload } from '../auth/auth.types';
 import { uuidV7 } from '../common/uuid-v7';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import {
+  cardOperatorSchema,
   cashMovementSchema,
   closeCashSchema,
   createCashRegisterSchema,
   openCashSchema,
+  paymentMethodSchema,
+  updateCardOperatorSchema,
+  updatePaymentMethodSchema,
 } from './cash.schemas';
 
 @Injectable()
 export class CashService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async configuration(auth: AccessTokenPayload) {
+    const [cardOperators, paymentMethods] = await Promise.all([
+      this.prisma.cardOperator.findMany({
+        where: { companyId: auth.companyId },
+        orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      }),
+      this.prisma.paymentMethod.findMany({
+        where: { companyId: auth.companyId },
+        orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      }),
+    ]);
+    return { cardOperators, paymentMethods };
+  }
+
+  async createCardOperator(auth: AccessTokenPayload, input: unknown) {
+    const data = cardOperatorSchema.parse(input);
+    const duplicate = await this.prisma.cardOperator.findFirst({
+      where: { companyId: auth.companyId, code: data.code },
+    });
+    if (duplicate) throw new ConflictException('Código da operadora já cadastrado');
+    const now = new Date();
+    return this.prisma.cardOperator.create({
+      data: { id: uuidV7(), companyId: auth.companyId, ...data, createdAt: now, updatedAt: now },
+    });
+  }
+
+  async updateCardOperator(auth: AccessTokenPayload, id: string, input: unknown) {
+    const data = updateCardOperatorSchema.parse(input);
+    const current = await this.prisma.cardOperator.findFirst({
+      where: { id, companyId: auth.companyId },
+    });
+    if (!current) throw new NotFoundException('Operadora de cartão não encontrada');
+    if (data.code && data.code !== current.code) {
+      const duplicate = await this.prisma.cardOperator.findFirst({
+        where: { companyId: auth.companyId, code: data.code, id: { not: id } },
+      });
+      if (duplicate) throw new ConflictException('Código da operadora já cadastrado');
+    }
+    return this.prisma.cardOperator.update({
+      where: { id },
+      data: {
+        ...(defined(data) as Prisma.CardOperatorUncheckedUpdateInput),
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  async createPaymentMethod(auth: AccessTokenPayload, input: unknown) {
+    const data = paymentMethodSchema.parse(input);
+    await this.validateCardOperator(auth, data.cardOperatorId);
+    const duplicate = await this.prisma.paymentMethod.findFirst({
+      where: { companyId: auth.companyId, code: data.code },
+    });
+    if (duplicate) throw new ConflictException('Código do finalizador já cadastrado');
+    const now = new Date();
+    return this.prisma.paymentMethod.create({
+      data: { id: uuidV7(), companyId: auth.companyId, ...data, createdAt: now, updatedAt: now },
+    });
+  }
+
+  async updatePaymentMethod(auth: AccessTokenPayload, id: string, input: unknown) {
+    const data = updatePaymentMethodSchema.parse(input);
+    const current = await this.prisma.paymentMethod.findFirst({
+      where: { id, companyId: auth.companyId },
+    });
+    if (!current) throw new NotFoundException('Finalizador de pagamento não encontrado');
+    await this.validateCardOperator(auth, data.cardOperatorId);
+    if (data.code && data.code !== current.code) {
+      const duplicate = await this.prisma.paymentMethod.findFirst({
+        where: { companyId: auth.companyId, code: data.code, id: { not: id } },
+      });
+      if (duplicate) throw new ConflictException('Código do finalizador já cadastrado');
+    }
+    return this.prisma.paymentMethod.update({
+      where: { id },
+      data: {
+        ...(defined(data) as Prisma.PaymentMethodUncheckedUpdateInput),
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  private async validateCardOperator(auth: AccessTokenPayload, id: string | null | undefined) {
+    if (!id) return;
+    const operator = await this.prisma.cardOperator.findFirst({
+      where: { id, companyId: auth.companyId, active: true },
+    });
+    if (!operator) throw new NotFoundException('Operadora de cartão não encontrada');
+  }
 
   async overview(auth: AccessTokenPayload) {
     const [registers, methods] = await Promise.all([
@@ -304,4 +398,8 @@ export class CashService {
       },
     });
   }
+}
+
+function defined<T extends object>(value: T) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { RequireModules } from '../auth/modules.decorator';
@@ -11,6 +11,37 @@ import { CashService } from './cash.service';
 @RequireModules('finance')
 export class CashController {
   constructor(private readonly service: CashService) {}
+  @Get('configuration') @RequirePermissions('finance.cash.read') configuration(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.service.configuration(request.auth);
+  }
+  @Post('card-operators') @RequirePermissions('finance.cash.operate') createCardOperator(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.service.createCardOperator(request.auth, body);
+  }
+  @Patch('card-operators/:id') @RequirePermissions('finance.cash.operate') updateCardOperator(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.updateCardOperator(request.auth, id, body);
+  }
+  @Post('payment-methods') @RequirePermissions('finance.cash.operate') createPaymentMethod(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.service.createPaymentMethod(request.auth, body);
+  }
+  @Patch('payment-methods/:id') @RequirePermissions('finance.cash.operate') updatePaymentMethod(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.updatePaymentMethod(request.auth, id, body);
+  }
   @Get('overview') @RequirePermissions('finance.cash.read') overview(
     @Req() request: AuthenticatedRequest,
   ) {

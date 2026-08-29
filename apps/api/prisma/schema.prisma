@@ -979,18 +979,43 @@ model OrderItem {
 }
 
 model PaymentMethod {
-  id        String   @id @db.Uuid
-  companyId String   @map("company_id") @db.Uuid
-  code      String   @db.VarChar(40)
-  name      String   @db.VarChar(100)
-  type      String   @db.VarChar(30)
-  active    Boolean
-  createdAt DateTime @map("created_at") @db.Timestamptz
-  updatedAt DateTime @map("updated_at") @db.Timestamptz
+  id                String   @id @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  cardOperatorId    String?  @map("card_operator_id") @db.Uuid
+  code              String   @db.VarChar(40)
+  name              String   @db.VarChar(100)
+  type              String   @db.VarChar(30)
+  fiscalCode        String   @default("99") @map("fiscal_code") @db.VarChar(4)
+  maxInstallments   Int      @default(1) @map("max_installments")
+  createsReceivable Boolean  @default(false) @map("creates_receivable")
+  active            Boolean
+  createdAt         DateTime @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz
 
   @@unique([companyId, code])
   @@unique([id, companyId])
+  @@index([companyId, cardOperatorId], map: "payment_methods_card_operator_idx")
   @@map("payment_methods")
+}
+
+model CardOperator {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  code            String   @db.VarChar(40)
+  name            String   @db.VarChar(120)
+  taxId           String?  @map("tax_id") @db.VarChar(14)
+  debitRate       Decimal  @default(0) @map("debit_rate") @db.Decimal(9, 4)
+  creditRate      Decimal  @default(0) @map("credit_rate") @db.Decimal(9, 4)
+  installmentRate Decimal  @default(0) @map("installment_rate") @db.Decimal(9, 4)
+  settlementDays  Int      @default(1) @map("settlement_days")
+  active          Boolean  @default(true)
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@index([companyId, active], map: "card_operators_company_active_idx")
+  @@map("card_operators")
 }
 
 model PosSetting {
@@ -1017,6 +1042,9 @@ model Payment {
   orderId         String    @map("order_id") @db.Uuid
   paymentMethodId String    @map("payment_method_id") @db.Uuid
   amount          Decimal   @db.Decimal(19, 4)
+  installments    Int       @default(1)
+  feeAmount       Decimal   @default(0) @map("fee_amount") @db.Decimal(19, 4)
+  netAmount       Decimal   @default(0) @map("net_amount") @db.Decimal(19, 4)
   status          String    @db.VarChar(30)
   idempotencyKey  String    @map("idempotency_key") @db.VarChar(120)
   paidAt          DateTime? @map("paid_at") @db.Timestamptz
@@ -1259,17 +1287,17 @@ model FinancialSettlement {
 }
 
 model FoodTable {
-  id        String   @id @db.Uuid
-  companyId String   @map("company_id") @db.Uuid
-  branchId  String   @map("branch_id") @db.Uuid
-  code      String   @db.VarChar(30)
-  name      String   @db.VarChar(80)
-  capacity  Int
-  status    String   @db.VarChar(20)
-  active    Boolean
-  publicToken String @map("public_token") @db.Uuid
-  createdAt DateTime @map("created_at") @db.Timestamptz
-  updatedAt DateTime @map("updated_at") @db.Timestamptz
+  id          String   @id @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  branchId    String   @map("branch_id") @db.Uuid
+  code        String   @db.VarChar(30)
+  name        String   @db.VarChar(80)
+  capacity    Int
+  status      String   @db.VarChar(20)
+  active      Boolean
+  publicToken String   @map("public_token") @db.Uuid
+  createdAt   DateTime @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz
 
   @@unique([companyId, branchId, code])
   @@unique([publicToken])

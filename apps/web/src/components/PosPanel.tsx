@@ -15,7 +15,20 @@ import {
 type Lookup = {
   customers: Array<{ id: string; name: string }>;
   sellers: Array<{ id: string; name: string }>;
-  paymentMethods: Array<{ id: string; code: string; name: string; type: string }>;
+  paymentMethods: Array<{
+    id: string;
+    code: string;
+    name: string;
+    type: string;
+    maxInstallments?: number;
+    cardConfiguration?: {
+      operatorName: string;
+      debitRate: string;
+      creditRate: string;
+      installmentRate: string;
+      settlementDays: number;
+    } | null;
+  }>;
   locations: Array<{ id: string; code: string; name: string }>;
   products: PosProduct[];
   settings?: {
@@ -25,7 +38,7 @@ type Lookup = {
   };
 };
 type CartItem = PosProduct & { quantity: number; unitPrice: number; discount: number };
-type PaymentDraft = { key: number; paymentMethodId: string; amount: string };
+type PaymentDraft = { key: number; paymentMethodId: string; amount: string; installments: number };
 
 export function PosPanel({
   canDiscount,
@@ -50,7 +63,7 @@ export function PosPanel({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
   const [payments, setPayments] = useState<PaymentDraft[]>([
-    { key: 1, paymentMethodId: '', amount: '0.00' },
+    { key: 1, paymentMethodId: '', amount: '0.00', installments: 1 },
   ]);
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
   const [customerId, setCustomerId] = useState('');
@@ -94,7 +107,12 @@ export function PosPanel({
         setLookup(data);
         applyDefaults(data);
         setPayments([
-          { key: 1, paymentMethodId: data.paymentMethods[0]?.id ?? '', amount: '0.00' },
+          {
+            key: 1,
+            paymentMethodId: data.paymentMethods[0]?.id ?? '',
+            amount: '0.00',
+            installments: 1,
+          },
         ]);
       } catch (reason) {
         const cached = await readPosLookups<Lookup>(offlineScope);
@@ -102,7 +120,12 @@ export function PosPanel({
         setLookup(cached);
         applyDefaults(cached);
         setPayments([
-          { key: 1, paymentMethodId: cached.paymentMethods[0]?.id ?? '', amount: '0.00' },
+          {
+            key: 1,
+            paymentMethodId: cached.paymentMethods[0]?.id ?? '',
+            amount: '0.00',
+            installments: 1,
+          },
         ]);
         setError('Modo offline: usando catálogo armazenado neste dispositivo');
       }
@@ -114,7 +137,9 @@ export function PosPanel({
     const seller = data.settings?.defaultSellerId;
     const location = data.settings?.defaultLocationId;
     setCustomerId(data.customers.some(({ id }) => id === customer) ? customer! : '');
-    setSellerId(data.sellers.some(({ id }) => id === seller) ? seller! : (data.sellers[0]?.id ?? ''));
+    setSellerId(
+      data.sellers.some(({ id }) => id === seller) ? seller! : (data.sellers[0]?.id ?? ''),
+    );
     setLocationId(
       data.locations.some(({ id }) => id === location) ? location! : (data.locations[0]?.id ?? ''),
     );
@@ -240,7 +265,11 @@ export function PosPanel({
           unitPrice: item.openPrice ? item.unitPrice : null,
           discount: item.discount,
         })),
-        payments: payments.map(({ paymentMethodId, amount }) => ({ paymentMethodId, amount })),
+        payments: payments.map(({ paymentMethodId, amount, installments }) => ({
+          paymentMethodId,
+          amount,
+          installments,
+        })),
       };
       const result = await apiRequest<PosCheckoutResult>('/sales/pos/checkout', {
         method: 'POST',
@@ -260,6 +289,7 @@ export function PosPanel({
             lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)?.name ??
             'Pagamento',
           amount: Number(payment.amount),
+          netAmount: paymentNet(lookup, payment),
         })),
       });
       reset(false);
@@ -279,7 +309,11 @@ export function PosPanel({
             unitPrice: item.openPrice ? item.unitPrice : null,
             discount: item.discount,
           })),
-          payments: payments.map(({ paymentMethodId, amount }) => ({ paymentMethodId, amount })),
+          payments: payments.map(({ paymentMethodId, amount, installments }) => ({
+            paymentMethodId,
+            amount,
+            installments,
+          })),
         };
         await enqueueCheckout({
           id: key,
@@ -314,6 +348,7 @@ export function PosPanel({
               lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)?.name ??
               'Pagamento',
             amount: Number(payment.amount),
+            netAmount: paymentNet(lookup, payment),
           })),
         });
         reset(false);
@@ -326,7 +361,14 @@ export function PosPanel({
     setCart([]);
     setSearch('');
     setCustomerId(lookup.settings?.defaultCustomerId ?? '');
-    setPayments([{ key: 1, paymentMethodId: lookup.paymentMethods[0]?.id ?? '', amount: '0.00' }]);
+    setPayments([
+      {
+        key: 1,
+        paymentMethodId: lookup.paymentMethods[0]?.id ?? '',
+        amount: '0.00',
+        installments: 1,
+      },
+    ]);
     requestKey.current = randomId();
     if (clearReceipt) setReceipt(null);
   }
@@ -484,13 +526,23 @@ export function PosPanel({
         <aside className="pos-checkout">
           <div className="pos-defaults" aria-label="Padrões desta venda">
             <span>
-              Vendedor <strong>{lookup.sellers.find(({ id }) => id === sellerId)?.name ?? 'Não configurado'}</strong>
+              Vendedor{' '}
+              <strong>
+                {lookup.sellers.find(({ id }) => id === sellerId)?.name ?? 'Não configurado'}
+              </strong>
             </span>
             <span>
-              Estoque <strong>{lookup.locations.find(({ id }) => id === locationId)?.name ?? 'Não configurado'}</strong>
+              Estoque{' '}
+              <strong>
+                {lookup.locations.find(({ id }) => id === locationId)?.name ?? 'Não configurado'}
+              </strong>
             </span>
             <span>
-              Cliente <strong>{lookup.customers.find(({ id }) => id === customerId)?.name ?? 'Consumidor não identificado'}</strong>
+              Cliente{' '}
+              <strong>
+                {lookup.customers.find(({ id }) => id === customerId)?.name ??
+                  'Consumidor não identificado'}
+              </strong>
             </span>
           </div>
           {canReadCredit && (
@@ -519,7 +571,7 @@ export function PosPanel({
                   setPayments((current) =>
                     current.map((item) =>
                       item.key === payment.key
-                        ? { ...item, paymentMethodId: event.target.value }
+                        ? { ...item, paymentMethodId: event.target.value, installments: 1 }
                         : item,
                     ),
                   )
@@ -554,6 +606,35 @@ export function PosPanel({
                   )
                 }
               />
+              {lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)?.type ===
+                'credit_card' && (
+                <select
+                  aria-label="Parcelas"
+                  value={payment.installments}
+                  onChange={(event) =>
+                    setPayments((current) =>
+                      current.map((item) =>
+                        item.key === payment.key
+                          ? { ...item, installments: Number(event.target.value) }
+                          : item,
+                      ),
+                    )
+                  }
+                >
+                  {Array.from(
+                    {
+                      length:
+                        lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)
+                          ?.maxInstallments ?? 1,
+                    },
+                    (_, installment) => installment + 1,
+                  ).map((installment) => (
+                    <option key={installment} value={installment}>
+                      {installment}x
+                    </option>
+                  ))}
+                </select>
+              )}
               {payments.length > 1 && (
                 <button
                   type="button"
@@ -567,6 +648,19 @@ export function PosPanel({
               )}
             </div>
           ))}
+          {payments.map((payment) => {
+            const method = lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId);
+            if (!method?.cardConfiguration) return null;
+            const rate = paymentRate(method, payment.installments);
+            return (
+              <small className="pos-net-amount" key={`net-${payment.key}`}>
+                {method.cardConfiguration.operatorName}: líquido{' '}
+                {money(paymentNet(lookup, payment))} · taxa{' '}
+                {rate.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}% · D+
+                {method.cardConfiguration.settlementDays}
+              </small>
+            );
+          })}
           <button
             type="button"
             className="quiet"
@@ -581,6 +675,7 @@ export function PosPanel({
                       ({ id }) => !current.some(({ paymentMethodId }) => paymentMethodId === id),
                     )?.id ?? '',
                   amount: Math.max(0, total - paid).toFixed(2),
+                  installments: 1,
                 },
               ])
             }
@@ -619,6 +714,23 @@ export function PosPanel({
       )}
     </section>
   );
+}
+
+function paymentRate(method: Lookup['paymentMethods'][number], installments: number) {
+  const configuration = method.cardConfiguration;
+  if (!configuration) return 0;
+  if (method.type === 'debit_card') return Number(configuration.debitRate);
+  if (method.type === 'credit_card')
+    return (
+      Number(configuration.creditRate) +
+      Number(configuration.installmentRate) * Math.max(0, installments - 1)
+    );
+  return 0;
+}
+function paymentNet(lookup: Lookup, payment: PaymentDraft) {
+  const method = lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId);
+  const amount = Number(payment.amount || 0);
+  return method ? amount * (1 - paymentRate(method, payment.installments) / 100) : amount;
 }
 function field(form: FormData, name: string) {
   const raw = form.get(name);

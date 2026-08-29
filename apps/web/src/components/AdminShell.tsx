@@ -19,7 +19,12 @@ import { FoodServicePanel } from './FoodServicePanel';
 import { DeliveryPanel } from './DeliveryPanel';
 import { SalesForceApp } from './SalesForceApp';
 import { SystemSettingsPanel } from './SystemSettingsPanel';
-import { isWorkspaceSection, ModuleWorkspacePanel, type WorkspaceSection } from './ModuleWorkspacePanel';
+import {
+  isWorkspaceSection,
+  ModuleWorkspacePanel,
+  type WorkspaceSection,
+} from './ModuleWorkspacePanel';
+import { PaymentConfigurationPanel } from './PaymentConfigurationPanel';
 
 export type Section =
   | 'subscription'
@@ -43,6 +48,8 @@ export type Section =
   | 'branches'
   | 'users'
   | 'roles'
+  | 'card-operators'
+  | 'payment-finalizers'
   | WorkspaceSection;
 
 type NavigationItem = { id: Section; label: string };
@@ -61,27 +68,72 @@ const navigationGroups: Array<{
   },
   {
     label: 'Compras e Produção',
-    sections: ['purchase-orders', 'quotations', 'purchase-suggestions', 'production', 'purchase-analysis'],
+    sections: [
+      'purchase-orders',
+      'quotations',
+      'purchase-suggestions',
+      'production',
+      'purchase-analysis',
+    ],
   },
   {
     label: 'Comercial',
-    sections: ['sales-flow', 'sales-force', 'consignments', 'pre-sales', 'invoicing', 'commissions', 'promotions'],
+    sections: [
+      'sales-flow',
+      'sales-force',
+      'consignments',
+      'pre-sales',
+      'invoicing',
+      'commissions',
+      'promotions',
+    ],
   },
   {
     label: 'Frente de Caixa',
-    sections: ['pos', 'pos-operations', 'cash', 'cash-tape', 'card-operators', 'payment-finalizers', 'food'],
+    sections: [
+      'pos',
+      'pos-operations',
+      'cash',
+      'cash-tape',
+      'card-operators',
+      'payment-finalizers',
+      'food',
+    ],
   },
   {
     label: 'Fiscal',
-    sections: ['fiscal-documents', 'fiscal-issuance', 'purchase-xml', 'inbound-nfe', 'tax-rules', 'ncm', 'operation-natures'],
+    sections: [
+      'fiscal-documents',
+      'fiscal-issuance',
+      'purchase-xml',
+      'inbound-nfe',
+      'tax-rules',
+      'ncm',
+      'operation-natures',
+    ],
   },
   {
     label: 'Financeiro',
-    sections: ['payables', 'receivables', 'chart-accounts', 'receipts', 'pix-collection', 'digital-banks', 'banks', 'bank-movements'],
+    sections: [
+      'payables',
+      'receivables',
+      'chart-accounts',
+      'receipts',
+      'pix-collection',
+      'digital-banks',
+      'banks',
+      'bank-movements',
+    ],
   },
   {
     label: 'Ordem de Serviço',
-    sections: ['service-orders', 'services', 'service-objects', 'service-categories', 'service-groups'],
+    sections: [
+      'service-orders',
+      'services',
+      'service-objects',
+      'service-categories',
+      'service-groups',
+    ],
   },
   {
     label: 'Relatórios',
@@ -89,7 +141,17 @@ const navigationGroups: Array<{
   },
   {
     label: 'Configurações',
-    sections: ['settings', 'company-registration', 'branches', 'users', 'roles', 'system-parameters', 'subscription', 'change-password', 'switch-branch'],
+    sections: [
+      'settings',
+      'company-registration',
+      'branches',
+      'users',
+      'roles',
+      'system-parameters',
+      'subscription',
+      'change-password',
+      'switch-branch',
+    ],
   },
 ];
 
@@ -311,7 +373,9 @@ export function AdminShell({
                       onClick={() => setSection(item.id)}
                     >
                       <span>{item.label}</span>
-                      <span className="menu-indicator" aria-hidden="true">›</span>
+                      <span className="menu-indicator" aria-hidden="true">
+                        ›
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -380,6 +444,18 @@ export function AdminShell({
               canReopen={user.permissions.includes('finance.cash.reopen')}
             />
           )}
+          {section === 'card-operators' && (
+            <PaymentConfigurationPanel
+              mode="operators"
+              canManage={user.permissions.includes('finance.cash.operate')}
+            />
+          )}
+          {section === 'payment-finalizers' && (
+            <PaymentConfigurationPanel
+              mode="methods"
+              canManage={user.permissions.includes('finance.cash.operate')}
+            />
+          )}
           {section === 'food' && (
             <FoodServicePanel
               canManage={user.permissions.includes('food.tables.manage')}
@@ -387,9 +463,7 @@ export function AdminShell({
             />
           )}
           {section === 'delivery' && (
-            <DeliveryPanel
-              canOperate={user.permissions.includes('logistics.deliveries.operate')}
-            />
+            <DeliveryPanel canOperate={user.permissions.includes('logistics.deliveries.operate')} />
           )}
           {section === 'settings' && (
             <SystemSettingsPanel

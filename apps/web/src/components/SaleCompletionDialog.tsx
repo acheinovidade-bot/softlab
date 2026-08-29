@@ -11,7 +11,7 @@ export type ReceiptLine = {
 export type SaleReceipt = PosCheckoutResult & {
   customerName?: string | undefined;
   lines: ReceiptLine[];
-  payments: Array<{ name: string; amount: number }>;
+  payments: Array<{ name: string; amount: number; netAmount?: number }>;
 };
 type FiscalDocument = {
   accessKey: string;
@@ -128,7 +128,8 @@ function print80mm(receipt: SaleReceipt, fiscal?: FiscalDocument) {
     .join('');
   const payments = receipt.payments
     .map(
-      (payment) => `<div><span>${escape(payment.name)}</span><b>${money(payment.amount)}</b></div>`,
+      (payment) =>
+        `<div><span>${escape(payment.name)}${payment.netAmount !== undefined && Math.abs(payment.netAmount - payment.amount) > 0.004 ? `<small>Líquido ${money(payment.netAmount)}</small>` : ''}</span><b>${money(payment.amount)}</b></div>`,
     )
     .join('');
   target.document.write(

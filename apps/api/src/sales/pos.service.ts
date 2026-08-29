@@ -21,52 +21,71 @@ export class PosService {
   constructor(private readonly prisma: PrismaService) {}
 
   async lookups(auth: AccessTokenPayload) {
-    const [customers, sellers, products, paymentMethods, warehouses, settings] = await Promise.all([
-      this.prisma.customer.findMany({
-        where: { companyId: auth.companyId, active: true, deletedAt: null },
-        orderBy: { legalName: 'asc' },
-        take: 300,
-        select: { id: true, legalName: true, tradeName: true },
-      }),
-      this.prisma.employee.findMany({
-        where: {
-          companyId: auth.companyId,
-          active: true,
-          deletedAt: null,
-          OR: [{ branchId: auth.branchId }, { branchId: null }],
-        },
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true },
-      }),
-      this.prisma.product.findMany({
-        where: {
-          companyId: auth.companyId,
-          active: true,
-          deletedAt: null,
-          productType: { not: 'service' },
-        },
-        orderBy: { description: 'asc' },
-        take: 1000,
-        select: {
-          id: true,
-          code: true,
-          barcode: true,
-          description: true,
-          openPrice: true,
-          controlsLot: true,
-        },
-      }),
-      this.prisma.paymentMethod.findMany({
-        where: { companyId: auth.companyId, active: true },
-        orderBy: { name: 'asc' },
-        select: { id: true, code: true, name: true, type: true },
-      }),
-      this.prisma.warehouse.findMany({
-        where: { companyId: auth.companyId, branchId: auth.branchId },
-        select: { id: true },
-      }),
-      this.settings(auth),
-    ]);
+    const [customers, sellers, products, paymentMethods, cardOperators, warehouses, settings] =
+      await Promise.all([
+        this.prisma.customer.findMany({
+          where: { companyId: auth.companyId, active: true, deletedAt: null },
+          orderBy: { legalName: 'asc' },
+          take: 300,
+          select: { id: true, legalName: true, tradeName: true },
+        }),
+        this.prisma.employee.findMany({
+          where: {
+            companyId: auth.companyId,
+            active: true,
+            deletedAt: null,
+            OR: [{ branchId: auth.branchId }, { branchId: null }],
+          },
+          orderBy: { name: 'asc' },
+          select: { id: true, name: true },
+        }),
+        this.prisma.product.findMany({
+          where: {
+            companyId: auth.companyId,
+            active: true,
+            deletedAt: null,
+            productType: { not: 'service' },
+          },
+          orderBy: { description: 'asc' },
+          take: 1000,
+          select: {
+            id: true,
+            code: true,
+            barcode: true,
+            description: true,
+            openPrice: true,
+            controlsLot: true,
+          },
+        }),
+        this.prisma.paymentMethod.findMany({
+          where: { companyId: auth.companyId, active: true },
+          orderBy: { name: 'asc' },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true,
+            cardOperatorId: true,
+            maxInstallments: true,
+          },
+        }),
+        this.prisma.cardOperator.findMany({
+          where: { companyId: auth.companyId, active: true },
+          select: {
+            id: true,
+            name: true,
+            debitRate: true,
+            creditRate: true,
+            installmentRate: true,
+            settlementDays: true,
+          },
+        }),
+        this.prisma.warehouse.findMany({
+          where: { companyId: auth.companyId, branchId: auth.branchId },
+          select: { id: true },
+        }),
+        this.settings(auth),
+      ]);
     const locations = await this.prisma.stockLocation.findMany({
       where: { companyId: auth.companyId, warehouseId: { in: warehouses.map(({ id }) => id) } },
       orderBy: { name: 'asc' },
@@ -94,7 +113,21 @@ export class PosService {
     return {
       customers: customers.map((item) => ({ id: item.id, name: item.tradeName ?? item.legalName })),
       sellers,
-      paymentMethods,
+      paymentMethods: paymentMethods.map((method) => {
+        const operator = cardOperators.find(({ id }) => id === method.cardOperatorId);
+        return {
+          ...method,
+          cardConfiguration: operator
+            ? {
+                operatorName: operator.name,
+                debitRate: operator.debitRate,
+                creditRate: operator.creditRate,
+                installmentRate: operator.installmentRate,
+                settlementDays: operator.settlementDays,
+              }
+            : null,
+        };
+      }),
       locations,
       settings,
       products: products.map((product) => {
@@ -235,6 +268,22 @@ export class PosService {
     if (!location || !warehouse) throw new NotFoundException('Localização fora da filial');
     if (methods.length !== data.payments.length)
       throw new NotFoundException('Forma de pagamento não encontrada');
+    for (const payment of data.payments) {
+      const method = methods.find(({ id }) => id === payment.paymentMethodId);
+      if (method && payment.installments > method.maxInstallments)
+        throw new BadRequestException(
+          `${method.name} permite no máximo ${method.maxInstallments} parcela(s)`,
+        );
+    }
+    const cardOperators = await this.prisma.cardOperator.findMany({
+      where: {
+        companyId: auth.companyId,
+        active: true,
+        id: {
+          in: methods.flatMap(({ cardOperatorId }) => (cardOperatorId ? [cardOperatorId] : [])),
+        },
+      },
+    });
     if (products.length !== data.items.length)
       throw new NotFoundException('Produto não encontrado');
     const prices = await this.prisma.productPrice.findMany({
@@ -450,19 +499,35 @@ export class PosService {
               });
           }
         }
-        const paymentRows = data.payments.map((payment, index) => ({
-          id: uuidV7(),
-          companyId: auth.companyId,
-          branchId: auth.branchId,
-          orderId,
-          paymentMethodId: payment.paymentMethodId,
-          amount: new Prisma.Decimal(payment.amount),
-          status: creditMethodIds.has(payment.paymentMethodId) ? 'pending' : 'paid',
-          idempotencyKey: `${origin}:${data.idempotencyKey}:${index}`,
-          paidAt: creditMethodIds.has(payment.paymentMethodId) ? null : now,
-          createdAt: now,
-          updatedAt: now,
-        }));
+        const paymentRows = data.payments.map((payment, index) => {
+          const method = methods.find(({ id }) => id === payment.paymentMethodId)!;
+          const operator = cardOperators.find(({ id }) => id === method.cardOperatorId);
+          const rate = operator
+            ? method.type === 'debit_card'
+              ? operator.debitRate
+              : method.type === 'credit_card'
+                ? operator.creditRate.add(operator.installmentRate.mul(payment.installments - 1))
+                : new Prisma.Decimal(0)
+            : new Prisma.Decimal(0);
+          const amount = new Prisma.Decimal(payment.amount);
+          const feeAmount = amount.mul(rate).div(100).toDecimalPlaces(4);
+          return {
+            id: uuidV7(),
+            companyId: auth.companyId,
+            branchId: auth.branchId,
+            orderId,
+            paymentMethodId: payment.paymentMethodId,
+            amount,
+            installments: payment.installments,
+            feeAmount,
+            netAmount: amount.sub(feeAmount),
+            status: creditMethodIds.has(payment.paymentMethodId) ? 'pending' : 'paid',
+            idempotencyKey: `${origin}:${data.idempotencyKey}:${index}`,
+            paidAt: creditMethodIds.has(payment.paymentMethodId) ? null : now,
+            createdAt: now,
+            updatedAt: now,
+          };
+        });
         await tx.payment.createMany({ data: paymentRows });
         if (creditAmount.gt(0) && data.customerId && receivableAccount) {
           const dueDate = data.creditDueDate
