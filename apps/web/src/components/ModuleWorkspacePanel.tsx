@@ -27,9 +27,6 @@ export type WorkspaceSection =
   | 'service-objects'
   | 'service-categories'
   | 'service-groups'
-  | 'reports-summary'
-  | 'reports-customers'
-  | 'reports-products'
   | 'company-registration'
   | 'system-parameters'
   | 'change-password'
@@ -182,21 +179,6 @@ const modules: Record<
     title: 'Grupos de serviços',
     description: 'Agrupamento comercial e técnico do catálogo.',
     features: ['Grupo e subgrupo', 'Equipe responsável', 'Centro de custo'],
-  },
-  'reports-summary': {
-    title: 'Sumário geral',
-    description: 'Indicadores consolidados de vendas, caixa, estoque e financeiro.',
-    features: ['Faturamento e margem', 'Saldo e giro', 'Contas e caixa'],
-  },
-  'reports-customers': {
-    title: 'Relatório de clientes',
-    description: 'Cadastro, compras, cupons, pagamentos e saldo por cliente.',
-    features: ['Histórico de compras', 'Histórico de pagamentos', 'Saldo e frequência'],
-  },
-  'reports-products': {
-    title: 'Relatório de produtos',
-    description: 'Custo, preço de venda, lucro unitário e margem.',
-    features: ['Preço de custo e venda', 'Lucro e margem', 'Filtros por grupo e status'],
   },
   'company-registration': {
     title: 'Cadastro da empresa',

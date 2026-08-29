@@ -16,12 +16,14 @@ describe('PosSettingsPanel', () => {
           defaultCustomerId: null,
           defaultSellerId: 'seller-1',
           defaultLocationId: 'location-1',
+          sellerMode: 'default',
         },
       } as never)
       .mockResolvedValueOnce({
         defaultCustomerId: null,
         defaultSellerId: 'seller-1',
         defaultLocationId: 'location-1',
+        sellerMode: 'default',
       } as never);
 
     render(<PosSettingsPanel canManage />);
@@ -34,6 +36,7 @@ describe('PosSettingsPanel', () => {
         defaultCustomerId: null,
         defaultSellerId: 'seller-1',
         defaultLocationId: 'location-1',
+        sellerMode: 'default',
       }),
     });
   });

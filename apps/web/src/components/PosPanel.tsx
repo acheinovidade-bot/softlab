@@ -35,9 +35,17 @@ type Lookup = {
     defaultCustomerId: string | null;
     defaultSellerId: string | null;
     defaultLocationId: string | null;
+    sellerMode: 'default' | 'per_sale';
   };
 };
-type CartItem = PosProduct & { quantity: number; unitPrice: number; discount: number };
+type CartItem = PosProduct & {
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  lotId: string | null;
+  lotNumber: string | null;
+  lotExpiresAt: string | null;
+};
 type PaymentDraft = { key: number; paymentMethodId: string; amount: string; installments: number };
 
 export function PosPanel({
@@ -70,6 +78,7 @@ export function PosPanel({
   const [sellerId, setSellerId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [statementOpen, setStatementOpen] = useState(false);
+  const [lotSelection, setLotSelection] = useState<PosProduct | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -138,7 +147,11 @@ export function PosPanel({
     const location = data.settings?.defaultLocationId;
     setCustomerId(data.customers.some(({ id }) => id === customer) ? customer! : '');
     setSellerId(
-      data.sellers.some(({ id }) => id === seller) ? seller! : (data.sellers[0]?.id ?? ''),
+      data.settings?.sellerMode === 'per_sale'
+        ? ''
+        : data.sellers.some(({ id }) => id === seller)
+          ? seller!
+          : '',
     );
     setLocationId(
       data.locations.some(({ id }) => id === location) ? location! : (data.locations[0]?.id ?? ''),
@@ -221,6 +234,17 @@ export function PosPanel({
   function add(product: PosProduct) {
     if (product.salePrice === null && !product.openPrice)
       return setError('Produto sem preço vigente');
+    if (product.selectLotAtPos) {
+      const validLots = product.lots.filter(
+        (lot) => !isExpired(lot.expiresAt) && Number(lot.availableQuantity) > 0,
+      );
+      if (!validLots.length) return setError('Produto sem lote válido e disponível para venda');
+      setLotSelection(product);
+      return;
+    }
+    commitProduct(product, null);
+  }
+  function commitProduct(product: PosProduct, lot: PosProduct['lots'][number] | null) {
     setCart((current) => {
       const existing = current.find(({ id }) => id === product.id);
       return existing
@@ -229,11 +253,20 @@ export function PosPanel({
           )
         : [
             ...current,
-            { ...product, quantity: 1, unitPrice: Number(product.salePrice ?? 0), discount: 0 },
+            {
+              ...product,
+              quantity: 1,
+              unitPrice: Number(product.salePrice ?? 0),
+              discount: 0,
+              lotId: lot?.id ?? null,
+              lotNumber: lot?.lotNumber ?? null,
+              lotExpiresAt: lot?.expiresAt ?? null,
+            },
           ];
     });
     setSearch('');
     setError('');
+    setLotSelection(null);
     searchRef.current?.focus();
   }
   function addFromSearch() {
@@ -252,8 +285,8 @@ export function PosPanel({
   async function checkout(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!cart.length) return setError('Adicione ao menos um produto');
-    if (!sellerId || !locationId)
-      return setError('Defina o vendedor e o local padrão nas Configurações do PDV');
+    if (!sellerId) return setError('Selecione o vendedor desta venda ou configure um padrão');
+    if (!locationId) return setError('Configure a movimentação interna do PDV');
     if (Math.abs(paid - total) > 0.009)
       return setError('Os pagamentos devem fechar exatamente o total da venda');
     const form = new FormData(event.currentTarget);
@@ -272,6 +305,7 @@ export function PosPanel({
           quantity: item.quantity,
           unitPrice: item.openPrice ? item.unitPrice : null,
           discount: item.discount,
+          lotId: item.lotId,
         })),
         payments: payments.map(({ paymentMethodId, amount, installments }) => ({
           paymentMethodId,
@@ -316,6 +350,7 @@ export function PosPanel({
             quantity: item.quantity,
             unitPrice: item.openPrice ? item.unitPrice : null,
             discount: item.discount,
+            lotId: item.lotId,
           })),
           payments: payments.map(({ paymentMethodId, amount, installments }) => ({
             paymentMethodId,
@@ -369,6 +404,9 @@ export function PosPanel({
     setCart([]);
     setSearch('');
     setCustomerId(lookup.settings?.defaultCustomerId ?? '');
+    setSellerId(
+      lookup.settings?.sellerMode === 'per_sale' ? '' : (lookup.settings?.defaultSellerId ?? ''),
+    );
     setPayments([
       {
         key: 1,
@@ -452,6 +490,59 @@ export function PosPanel({
           }}
         />
       )}
+      {lotSelection && (
+        <div className="modal-backdrop" role="presentation">
+          <section
+            className="lot-picker"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lot-picker-title"
+          >
+            <header>
+              <div>
+                <span className="eyebrow">RASTREABILIDADE</span>
+                <h2 id="lot-picker-title">Selecione o lote</h2>
+                <p>
+                  {lotSelection.code} · {lotSelection.description}
+                </p>
+              </div>
+              <button type="button" className="quiet" onClick={() => setLotSelection(null)}>
+                Fechar
+              </button>
+            </header>
+            <div className="lot-picker-list">
+              {lotSelection.lots.map((lot) => {
+                const expired = isExpired(lot.expiresAt);
+                const unavailable = Number(lot.availableQuantity) <= 0;
+                return (
+                  <button
+                    type="button"
+                    key={lot.id}
+                    disabled={expired || unavailable}
+                    onClick={() => commitProduct(lotSelection, lot)}
+                  >
+                    <span>
+                      <strong>Lote {lot.lotNumber}</strong>
+                      <small>
+                        {lot.expiresAt
+                          ? `Validade ${date(lot.expiresAt)}`
+                          : 'Sem validade informada'}
+                      </small>
+                    </span>
+                    <span className={expired ? 'lot-expired' : ''}>
+                      {expired
+                        ? 'Vencido'
+                        : unavailable
+                          ? 'Sem saldo'
+                          : `${number(lot.availableQuantity)} disponível`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      )}
       <form ref={formRef} className="pos-layout" onSubmit={(event) => void checkout(event)}>
         <main className="pos-catalog">
           <div className="pos-search">
@@ -503,9 +594,11 @@ export function PosPanel({
                   <strong>{item.code}</strong>
                   {item.description}
                   <small>
-                    {item.controlsLot
-                      ? 'Saída FEFO por lote'
-                      : `Disponível ${number(item.availableQuantity)}`}
+                    {item.lotNumber
+                      ? `Lote ${item.lotNumber}${item.lotExpiresAt ? ` · val. ${date(item.lotExpiresAt)}` : ''}`
+                      : item.controlsLot
+                        ? 'Baixa automática FEFO'
+                        : `Disponível ${number(item.availableQuantity)}`}
                   </small>
                 </span>
                 <input
@@ -555,18 +648,6 @@ export function PosPanel({
         <aside className="pos-checkout">
           <div className="pos-defaults" aria-label="Padrões desta venda">
             <span>
-              Vendedor{' '}
-              <strong>
-                {lookup.sellers.find(({ id }) => id === sellerId)?.name ?? 'Não configurado'}
-              </strong>
-            </span>
-            <span>
-              Estoque{' '}
-              <strong>
-                {lookup.locations.find(({ id }) => id === locationId)?.name ?? 'Não configurado'}
-              </strong>
-            </span>
-            <span>
               Cliente{' '}
               <strong>
                 {lookup.customers.find(({ id }) => id === customerId)?.name ??
@@ -574,6 +655,23 @@ export function PosPanel({
               </strong>
             </span>
           </div>
+          {lookup.settings?.sellerMode === 'per_sale' && (
+            <label className="pos-seller-select">
+              Vendedor desta venda
+              <select
+                value={sellerId}
+                required
+                onChange={(event) => setSellerId(event.target.value)}
+              >
+                <option value="">Selecione o vendedor</option>
+                {lookup.sellers.map((seller) => (
+                  <option key={seller.id} value={seller.id}>
+                    {seller.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {canReadCredit && (
             <button
               type="button"
@@ -771,6 +869,15 @@ function money(value: string | number) {
 }
 function number(value: string | number) {
   return Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+}
+function date(value: string) {
+  return new Date(value).toLocaleDateString('pt-BR');
+}
+function isExpired(value: string | null) {
+  if (!value) return false;
+  const expiry = new Date(value);
+  expiry.setHours(23, 59, 59, 999);
+  return expiry < new Date();
 }
 function randomId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto

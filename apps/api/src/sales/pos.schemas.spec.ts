@@ -13,6 +13,7 @@ describe('POS checkout schema', () => {
   it('normalizes quantities, discounts and payments', () => {
     const parsed = posCheckoutSchema.parse(checkout);
     expect(parsed.items[0]).toMatchObject({ quantity: 2, unitPrice: null, discount: 1.5 });
+    expect(parsed.items[0]?.lotId).toBeNull();
     expect(parsed.payments[0]?.amount).toBe(18.5);
   });
 
@@ -42,11 +43,22 @@ describe('POS settings schema', () => {
         defaultCustomerId: null,
         defaultSellerId: id('2'),
         defaultLocationId: id('3'),
+        sellerMode: 'default',
       }),
     ).toEqual({
       defaultCustomerId: null,
       defaultSellerId: id('2'),
       defaultLocationId: id('3'),
+      sellerMode: 'default',
     });
+  });
+  it('allows the operator to select a seller in each sale', () => {
+    expect(
+      posSettingsSchema.parse({
+        defaultSellerId: null,
+        defaultLocationId: id('3'),
+        sellerMode: 'per_sale',
+      }),
+    ).toMatchObject({ defaultSellerId: null, sellerMode: 'per_sale' });
   });
 });

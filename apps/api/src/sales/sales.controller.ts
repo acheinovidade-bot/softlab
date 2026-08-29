@@ -46,6 +46,12 @@ export class SalesController {
   ) {
     return this.service.listOrders(request.auth, query);
   }
+  @Post('orders') @RequirePermissions('sales.orders.manage') createOrder(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.service.createOrder(request.auth, body);
+  }
   @Get('orders/:id') @RequirePermissions('sales.orders.read') order(
     @Req() request: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,

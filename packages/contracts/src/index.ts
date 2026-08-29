@@ -586,6 +586,14 @@ export interface PosProduct {
   description: string;
   openPrice: boolean;
   controlsLot: boolean;
+  controlsExpiry: boolean;
+  selectLotAtPos: boolean;
+  lots: Array<{
+    id: string;
+    lotNumber: string;
+    expiresAt: string | null;
+    availableQuantity: string;
+  }>;
   salePrice: string | null;
   availableQuantity: string;
 }

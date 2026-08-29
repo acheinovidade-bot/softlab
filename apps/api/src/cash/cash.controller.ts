@@ -21,6 +21,11 @@ import { CashService } from './cash.service';
 @RequireModules('finance')
 export class CashController {
   constructor(private readonly service: CashService) {}
+  @Get('dashboard') @RequirePermissions('finance.cash.read') dashboard(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.service.dashboard(request.auth);
+  }
   @Get('operations') @RequirePermissions('finance.cash.read') operations(
     @Req() request: AuthenticatedRequest,
     @Query() query: unknown,

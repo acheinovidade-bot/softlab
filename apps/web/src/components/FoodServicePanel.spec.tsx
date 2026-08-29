@@ -41,5 +41,8 @@ describe('FoodServicePanel', () => {
     fireEvent.click(table);
     expect(screen.getByRole('button', { name: /Comanda 1/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'RESUMO' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Delivery' }));
+    expect(screen.getAllByRole('heading', { name: 'Delivery' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: '+ Novo atendimento' })).toBeInTheDocument();
   });
 });

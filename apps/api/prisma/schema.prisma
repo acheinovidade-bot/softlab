@@ -457,6 +457,7 @@ model Product {
   productType         String    @map("product_type") @db.VarChar(20)
   controlsLot         Boolean   @map("controls_lot")
   controlsExpiry      Boolean   @map("controls_expiry")
+  selectLotAtPos      Boolean   @default(false) @map("select_lot_at_pos")
   allowsNegativeStock Boolean   @map("allows_negative_stock")
   openPrice           Boolean   @map("open_price")
   imageStorageKey     String?   @map("image_storage_key")
@@ -1024,6 +1025,7 @@ model PosSetting {
   branchId          String   @map("branch_id") @db.Uuid
   defaultCustomerId String?  @map("default_customer_id") @db.Uuid
   defaultSellerId   String?  @map("default_seller_id") @db.Uuid
+  sellerMode        String   @default("default") @map("seller_mode") @db.VarChar(20)
   defaultLocationId String?  @map("default_location_id") @db.Uuid
   createdBy         String   @map("created_by") @db.Uuid
   updatedBy         String   @map("updated_by") @db.Uuid

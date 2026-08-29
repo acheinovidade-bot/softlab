@@ -26,8 +26,11 @@ import {
 } from './ModuleWorkspacePanel';
 import { PaymentConfigurationPanel } from './PaymentConfigurationPanel';
 import { CashOperationsPanel } from './CashOperationsPanel';
+import { DashboardPanel } from './DashboardPanel';
+import { ReportsPanel } from './ReportsPanel';
 
 export type Section =
+  | 'dashboard'
   | 'subscription'
   | 'products'
   | 'stock'
@@ -53,6 +56,9 @@ export type Section =
   | 'payment-finalizers'
   | 'pos-operations'
   | 'cash-tape'
+  | 'reports-summary'
+  | 'reports-customers'
+  | 'reports-products'
   | WorkspaceSection;
 
 type NavigationItem = { id: Section; label: string };
@@ -62,6 +68,7 @@ const navigationGroups: Array<{
   icon: NavIconName;
   sections: Section[];
 }> = [
+  { label: 'Visão geral', icon: 'chart', sections: ['dashboard'] },
   {
     label: 'Pessoas',
     icon: 'people',
@@ -179,6 +186,11 @@ export function AdminShell({
   initialSection?: Section;
 }) {
   const availableCandidates: Array<NavigationItem | false> = [
+    user.modules.includes('finance') &&
+      user.permissions.includes('finance.cash.read') && {
+        id: 'dashboard' as const,
+        label: 'Painel de desempenho',
+      },
     user.modules.includes('catalog') &&
       user.permissions.includes('catalog.products.read') && {
         id: 'products' as const,
@@ -435,6 +447,9 @@ export function AdminShell({
           </div>
         </header>
         <main className="content">
+          {section === 'dashboard' && (
+            <DashboardPanel onOpenOrders={() => setSection('sales-flow')} />
+          )}
           {isWorkspaceSection(section) && <ModuleWorkspacePanel section={section} />}
           {available.length === 0 && (
             <section className="empty">
@@ -498,6 +513,9 @@ export function AdminShell({
           )}
           {section === 'pos-operations' && <CashOperationsPanel mode="operations" />}
           {section === 'cash-tape' && <CashOperationsPanel mode="tape" />}
+          {section === 'reports-summary' && <ReportsPanel mode="summary" />}
+          {section === 'reports-customers' && <ReportsPanel mode="customers" />}
+          {section === 'reports-products' && <ReportsPanel mode="products" />}
           {section === 'food' && (
             <FoodServicePanel
               canManage={user.permissions.includes('food.tables.manage')}

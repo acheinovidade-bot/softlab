@@ -58,6 +58,7 @@ export function FoodServicePanel({
     tabs: [],
   });
   const [tableId, setTableId] = useState<string | null>(null);
+  const [channel, setChannel] = useState('table');
   const [tabId, setTabId] = useState<string | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState('');
@@ -73,11 +74,17 @@ export function FoodServicePanel({
   }
   useEffect(() => void load(), []);
   const table = data.tables.find(({ id }) => id === tableId);
-  const tabs = data.tabs.filter((tab) => tab.tableId === tableId);
+  const tabs = data.tabs.filter((tab) =>
+    channel === 'table' ? tab.tableId === tableId : tab.channel === channel,
+  );
   const selected = data.tabs.find(({ id }) => id === tabId) ?? tabs[0];
   async function post(path: string, body: unknown = {}) {
     try {
-      await apiRequest(path, { method: 'POST', body: JSON.stringify(body) });
+      const result = await apiRequest<{ id?: string }>(path, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      if (path === '/food/tabs' && result?.id) setTabId(result.id);
       await load();
     } catch (reason) {
       setError(message(reason));
@@ -173,47 +180,100 @@ export function FoodServicePanel({
         </div>
       )}
       <div className="food-channels">
-        {[
-          ['table', 'Mesas'],
-          ['counter', 'Balcão'],
-          ['pickup', 'Retirada'],
-          ['delivery', 'Delivery'],
-          ['kiosk', 'Totem'],
-          ['digital_menu', 'Cardápio digital'],
-        ].map(([id, label]) => (
-          <button key={id} className={id === 'table' ? 'active' : ''}>
+        {(
+          [
+            ['table', 'Mesas'],
+            ['counter', 'Balcão'],
+            ['pickup', 'Retirada'],
+            ['delivery', 'Delivery'],
+            ['kiosk', 'Totem'],
+            ['digital_menu', 'Cardápio digital'],
+          ] as Array<[string, string]>
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={id === channel ? 'active' : ''}
+            onClick={() => {
+              setChannel(id);
+              setTableId(null);
+              setTabId(data.tabs.find((tab) => tab.channel === id)?.id ?? null);
+            }}
+          >
             {label}
           </button>
         ))}
       </div>
       <div className="food-layout">
         <main>
-          <div className="table-map">
-            {data.tables.map((item) => {
-              const openTabs = data.tabs.filter(({ tableId }) => tableId === item.id);
-              const total = openTabs.reduce((sum, tab) => sum + Number(tab.total), 0);
-              return (
-                <button
-                  key={item.id}
-                  className={`restaurant-table ${item.status} ${tableId === item.id ? 'selected' : ''}`}
-                  onClick={() => {
-                    setTableId(item.id);
-                    setTabId(openTabs[0]?.id ?? null);
-                  }}
-                >
-                  <span>{item.code}</span>
-                  <strong>{item.name}</strong>
-                  <small>
-                    {openTabs.length
-                      ? `${openTabs.length} comanda${openTabs.length > 1 ? 's' : ''}`
-                      : `${item.capacity} lugares`}
-                  </small>
-                  {openTabs.length > 0 && <b>{money(total)}</b>}
-                </button>
-              );
-            })}
-          </div>
-          {canManage && (
+          {channel === 'table' ? (
+            <div className="table-map">
+              {data.tables.map((item) => {
+                const openTabs = data.tabs.filter(({ tableId }) => tableId === item.id);
+                const total = openTabs.reduce((sum, tab) => sum + Number(tab.total), 0);
+                return (
+                  <button
+                    key={item.id}
+                    className={`restaurant-table ${item.status} ${tableId === item.id ? 'selected' : ''}`}
+                    onClick={() => {
+                      setTableId(item.id);
+                      setTabId(openTabs[0]?.id ?? null);
+                    }}
+                  >
+                    <span>{item.code}</span>
+                    <strong>{item.name}</strong>
+                    <small>
+                      {openTabs.length
+                        ? `${openTabs.length} comanda${openTabs.length > 1 ? 's' : ''}`
+                        : `${item.capacity} lugares`}
+                    </small>
+                    {openTabs.length > 0 && <b>{money(total)}</b>}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <section className="food-channel-workspace">
+              <header>
+                <div>
+                  <span className="eyebrow">ATENDIMENTO</span>
+                  <h2>{channelName(channel)}</h2>
+                </div>
+                {canOperate && (
+                  <button
+                    className="primary"
+                    onClick={() => void post('/food/tabs', { tableId: null, channel, guests: 1 })}
+                  >
+                    + Novo atendimento
+                  </button>
+                )}
+              </header>
+              <div className="food-channel-orders">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    className={selected?.id === tab.id ? 'active' : ''}
+                    onClick={() => setTabId(tab.id)}
+                  >
+                    <span>
+                      <strong>{tab.number}</strong>
+                      <small>
+                        {tab.itemCount} itens · {tab.guests} pessoa(s)
+                      </small>
+                    </span>
+                    <b>{money(tab.total)}</b>
+                  </button>
+                ))}
+                {tabs.length === 0 && (
+                  <div className="food-empty">
+                    <strong>Nenhum atendimento aberto</strong>
+                    <span>Use “Novo atendimento” para começar.</span>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+          {channel === 'table' && canManage && (
             <details className="food-add-table">
               <summary>+ Adicionar mesa</summary>
               <form
@@ -236,25 +296,29 @@ export function FoodServicePanel({
           )}
         </main>
         <aside className="food-drawer">
-          {!table && (
+          {!table && channel === 'table' && (
             <div className="food-empty">
               <strong>Selecione uma mesa</strong>
               <span>Veja comandas e lance consumos.</span>
             </div>
           )}
-          {table && (
+          {(table || channel !== 'table') && (
             <>
               <header>
                 <div>
-                  <span className="eyebrow">{table.code}</span>
-                  <h2>{table.name}</h2>
+                  <span className="eyebrow">{table?.code ?? 'CANAL'}</span>
+                  <h2>{table?.name ?? channelName(channel)}</h2>
                 </div>
-                <span className={`cash-badge ${table.status === 'occupied' ? 'open' : ''}`}>
-                  {table.status === 'occupied' ? 'Ocupada' : 'Livre'}
-                </span>
-                <button className="quiet" onClick={() => void showTableQr(table)}>
-                  QR Code da mesa
-                </button>
+                {table && (
+                  <>
+                    <span className={`cash-badge ${table.status === 'occupied' ? 'open' : ''}`}>
+                      {table.status === 'occupied' ? 'Ocupada' : 'Livre'}
+                    </span>
+                    <button className="quiet" onClick={() => void showTableQr(table)}>
+                      QR Code da mesa
+                    </button>
+                  </>
+                )}
               </header>
               <div className="food-tabs">
                 <div>
@@ -272,7 +336,7 @@ export function FoodServicePanel({
                     <button
                       className="new"
                       onClick={() =>
-                        void post('/food/tabs', { tableId: table.id, channel: 'table', guests: 1 })
+                        void post('/food/tabs', { tableId: table?.id ?? null, channel, guests: 1 })
                       }
                     >
                       + Nova comanda
@@ -452,4 +516,18 @@ function randomId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : '018f4f12-3333-7333-8333-111111111111';
+}
+function channelName(channel: string) {
+  return (
+    (
+      {
+        table: 'Mesas e comandas',
+        counter: 'Venda balcão',
+        pickup: 'Retirada',
+        delivery: 'Delivery',
+        kiosk: 'Totem de autoatendimento',
+        digital_menu: 'Cardápio digital',
+      } as Record<string, string>
+    )[channel] ?? channel
+  );
 }

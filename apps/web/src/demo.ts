@@ -77,7 +77,7 @@ export const demoUser: CurrentUser = {
   ],
 };
 
-export function demoResponse(path: string): unknown {
+export function demoResponse(path: string, method = 'GET'): unknown {
   if (path.startsWith('/catalog/products'))
     return {
       items: [
@@ -137,6 +137,7 @@ export function demoResponse(path: string): unknown {
         defaultCustomerId: null,
         defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
         defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
+        sellerMode: 'per_sale',
       },
       customers: [
         { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
@@ -183,8 +184,30 @@ export function demoResponse(path: string): unknown {
           description: 'Café Especial 500 g',
           openPrice: false,
           controlsLot: true,
+          controlsExpiry: true,
+          selectLotAtPos: true,
           salePrice: '32.90',
           availableQuantity: '18',
+          lots: [
+            {
+              id: '018f4f12-2222-7222-8222-000000000811',
+              lotNumber: 'CAF-0826-A',
+              expiresAt: '2026-09-12T00:00:00.000Z',
+              availableQuantity: '7',
+            },
+            {
+              id: '018f4f12-2222-7222-8222-000000000812',
+              lotNumber: 'CAF-1026-B',
+              expiresAt: '2026-10-30T00:00:00.000Z',
+              availableQuantity: '11',
+            },
+            {
+              id: '018f4f12-2222-7222-8222-000000000813',
+              lotNumber: 'CAF-VENCIDO',
+              expiresAt: '2026-07-10T00:00:00.000Z',
+              availableQuantity: '2',
+            },
+          ],
         },
         {
           id: 'p2',
@@ -193,8 +216,11 @@ export function demoResponse(path: string): unknown {
           description: 'Leite Integral 1 L',
           openPrice: false,
           controlsLot: true,
+          controlsExpiry: true,
+          selectLotAtPos: false,
           salePrice: '6.49',
           availableQuantity: '42',
+          lots: [],
         },
         {
           id: 'p3',
@@ -203,8 +229,11 @@ export function demoResponse(path: string): unknown {
           description: 'Pão de Queijo Artesanal',
           openPrice: false,
           controlsLot: false,
+          controlsExpiry: false,
+          selectLotAtPos: false,
           salePrice: '12.50',
           availableQuantity: '25',
+          lots: [],
         },
       ],
     };
@@ -213,7 +242,140 @@ export function demoResponse(path: string): unknown {
       defaultCustomerId: null,
       defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
       defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
+      sellerMode: 'per_sale',
     };
+  if (path === '/sales/lookups')
+    return {
+      customers: [
+        { id: 'customer-1', name: 'Ana Martins' },
+        { id: 'customer-2', name: 'Mercado Boa Mesa' },
+      ],
+      sellers: [
+        { id: 'seller-1', name: 'Marina Costa' },
+        { id: 'seller-2', name: 'Carlos Lima' },
+      ],
+      paymentMethods: [
+        { id: 'method-1', name: 'PIX' },
+        { id: 'method-2', name: 'Boleto' },
+      ],
+      products: [
+        {
+          id: 'product-1',
+          code: 'CAF-001',
+          description: 'Café Especial 500 g',
+          controlsLot: true,
+          controlsExpiry: true,
+          openPrice: false,
+          price: { salePrice: '32.90' },
+        },
+        {
+          id: 'product-2',
+          code: 'LEI-001',
+          description: 'Leite Integral 1 L',
+          controlsLot: true,
+          controlsExpiry: true,
+          openPrice: false,
+          price: { salePrice: '6.49' },
+        },
+      ],
+      locations: [{ id: 'location-1', code: 'EXP', name: 'Expedição' }],
+      lots: [],
+    };
+  if (path === '/sales/quotes') return { items: [], total: 0, page: 1, pageSize: 20 };
+  if (path === '/sales/orders' && method !== 'GET')
+    return demoOrder('order-new', 'PED-000429', 'separation', 'Ana Martins', '164.50');
+  if (path === '/sales/orders')
+    return {
+      items: [
+        demoOrder('order-1', 'PED-000428', 'separation', 'Ana Martins', '219.80'),
+        demoOrder('order-2', 'PED-000427', 'invoicing', 'Mercado Boa Mesa', '648.40'),
+        demoOrder('order-3', 'PED-000426', 'delivery', 'Carlos Nobre', '98.70'),
+        demoOrder('order-4', 'PED-000425', 'completed', 'Beatriz Lima', '312.60'),
+      ],
+      total: 4,
+      page: 1,
+      pageSize: 20,
+    };
+  if (path.startsWith('/sales/orders/'))
+    return demoOrder(
+      path.split('/')[3] ?? 'order-1',
+      'PED-000428',
+      'separation',
+      'Ana Martins',
+      '219.80',
+    );
+  if (path === '/cash/dashboard') {
+    const daily = [
+      980, 1240, 890, 1630, 1450, 1890, 2100, 1760, 2380, 2040, 2670, 2310, 2940, 3184,
+    ];
+    const monthly = [
+      18200, 21400, 19800, 24600, 27100, 25800, 30400, 32900, 35100, 38700, 41200, 44850,
+    ];
+    return {
+      updatedAt: new Date().toISOString(),
+      metrics: {
+        todayGross: '3184.70',
+        todaySales: 37,
+        monthGross: '44850.30',
+        monthSales: 426,
+        averageTicket: '105.28',
+        pendingOrders: 8,
+        openReceivables: '12740.80',
+        lowStockProducts: 14,
+      },
+      daily: daily.map((value, index) => ({
+        label: `${String(index + 16).padStart(2, '0')}/08`,
+        value: String(value),
+        count: 20 + index,
+      })),
+      monthly: monthly.map((value, index) => ({
+        label: ['set', 'out', 'nov', 'dez', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago'][
+          index
+        ],
+        value: String(value),
+        count: 180 + index * 18,
+      })),
+      topProducts: Array.from({ length: 15 }, (_, index) => ({
+        productId: `top-${index}`,
+        code: `${['CAF', 'LEI', 'PAO', 'ACU', 'ARR'][index % 5]}-${String(index + 1).padStart(3, '0')}`,
+        description: [
+          'Café Especial',
+          'Leite Integral',
+          'Pão de Queijo',
+          'Açúcar Cristal',
+          'Arroz Premium',
+        ][index % 5],
+        quantity: String(482 - index * 21),
+        total: String(15800 - index * 640),
+        sales: 190 - index * 8,
+      })),
+      noSalesProducts: Array.from({ length: 8 }, (_, index) => ({
+        id: `no-sale-${index}`,
+        code: `SEM-${String(index + 1).padStart(3, '0')}`,
+        description: ['Molho Artesanal', 'Kit Presente', 'Biscoito Integral', 'Chá Premium'][
+          index % 4
+        ],
+      })),
+      topCreditCustomers: Array.from({ length: 10 }, (_, index) => ({
+        customerId: `credit-${index}`,
+        name: [
+          'Mercado Boa Mesa',
+          'Comercial Lima',
+          'Ana Martins',
+          'Empório Central',
+          'Carlos Nobre',
+          'Padaria Tradição',
+          'Beatriz Lima',
+          'Supermercado Sol',
+          'Daniela Souza',
+          'Loja Conveniência',
+        ][index],
+        purchased: String(12800 - index * 780),
+        openAmount: String(3200 - index * 170),
+        purchases: 32 - index * 2,
+      })),
+    };
+  }
   if (path.startsWith('/cash/operations'))
     return {
       totals: { sales: 3, gross: '384.70', fees: '5.55', net: '379.15' },
@@ -448,8 +610,66 @@ export function demoResponse(path: string): unknown {
           itemCount: 3,
           total: '64.70',
         },
+        {
+          id: 'tab-counter',
+          tableId: null,
+          number: 'BAL-021',
+          channel: 'counter',
+          waiterId: 'waiter-1',
+          guests: 1,
+          openedAt: new Date().toISOString(),
+          itemCount: 2,
+          total: '31.40',
+        },
+        {
+          id: 'tab-pickup',
+          tableId: null,
+          number: 'RET-014',
+          channel: 'pickup',
+          waiterId: 'waiter-2',
+          guests: 1,
+          openedAt: new Date().toISOString(),
+          itemCount: 3,
+          total: '58.90',
+        },
+        {
+          id: 'tab-delivery',
+          tableId: null,
+          number: 'DEL-108',
+          channel: 'delivery',
+          waiterId: 'waiter-1',
+          guests: 1,
+          openedAt: new Date().toISOString(),
+          itemCount: 4,
+          total: '86.20',
+        },
+        {
+          id: 'tab-kiosk',
+          tableId: null,
+          number: 'TOT-033',
+          channel: 'kiosk',
+          waiterId: null,
+          guests: 1,
+          openedAt: new Date().toISOString(),
+          itemCount: 1,
+          total: '24.90',
+        },
+        {
+          id: 'tab-digital',
+          tableId: null,
+          number: 'DIG-041',
+          channel: 'digital_menu',
+          waiterId: null,
+          guests: 2,
+          openedAt: new Date().toISOString(),
+          itemCount: 2,
+          total: '49.80',
+        },
       ],
     };
+  if (path === '/food/tabs' && method !== 'GET') return { id: 'tab-channel-new' };
+  if (path.startsWith('/food/tabs/') && path.endsWith('/items')) return { ok: true };
+  if (path.startsWith('/food/tabs/') && path.endsWith('/close')) return { ok: true };
   if (path === '/delivery/overview')
     return {
       drivers: [
@@ -569,6 +789,29 @@ export function demoResponse(path: string): unknown {
       ],
       total: '87.30',
     };
+  if (path.startsWith('/food/tabs/') && path.endsWith('/summary'))
+    return {
+      tab: { number: 'ATD-DEMO', openedAt: new Date().toISOString(), guests: 1 },
+      items: [
+        {
+          id: 'channel-item-1',
+          description: 'Bruschetta da Casa',
+          quantity: '1',
+          unitPrice: '24.90',
+          total: '24.90',
+          notes: null,
+        },
+        {
+          id: 'channel-item-2',
+          description: 'Café Especial',
+          quantity: '1',
+          unitPrice: '8.50',
+          total: '8.50',
+          notes: null,
+        },
+      ],
+      total: '33.40',
+    };
   if (path.includes('/checkout'))
     return {
       orderId: '018f4f12-2222-7222-8222-000000000501',
@@ -592,4 +835,24 @@ export function demoResponse(path: string): unknown {
       total: '87.30',
     };
   throw new Error('Demonstração sem resposta para este recurso');
+}
+
+function demoOrder(id: string, number: string, status: string, customer: string, total: string) {
+  return {
+    id,
+    number,
+    status,
+    origin: 'sales_quote',
+    customer: { id: `customer-${id}`, name: customer },
+    seller: { id: 'seller-1', name: 'Marina Costa' },
+    paymentMethod: { id: 'method-1', name: 'PIX' },
+    subtotal: total,
+    discount: '0',
+    surcharge: '0',
+    freight: '0',
+    total,
+    notes: null,
+    items: [],
+    createdAt: new Date().toISOString(),
+  };
 }

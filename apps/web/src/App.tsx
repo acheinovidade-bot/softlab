@@ -60,7 +60,7 @@ export function App() {
       <AdminShell
         user={demoUser}
         onLogout={() => Promise.resolve()}
-        initialSection={demo === 'pos' ? 'pos' : demo === 'food' ? 'food' : 'products'}
+        initialSection={demo === 'pos' ? 'pos' : demo === 'food' ? 'food' : 'dashboard'}
       />
     );
   if (publicQuotationToken) return <PublicQuotationPage token={publicQuotationToken} />;

@@ -55,6 +55,8 @@ export class PosService {
             description: true,
             openPrice: true,
             controlsLot: true,
+            controlsExpiry: true,
+            selectLotAtPos: true,
           },
         }),
         this.prisma.paymentMethod.findMany({
@@ -110,6 +112,16 @@ export class PosService {
         },
       }),
     ]);
+    const lots = await this.prisma.stockLot.findMany({
+      where: {
+        companyId: auth.companyId,
+        id: { in: balances.flatMap(({ lotId }) => (lotId ? [lotId] : [])) },
+      },
+      orderBy: [{ expiresAt: 'asc' }, { lotNumber: 'asc' }],
+    });
+    const posBalances = settings.defaultLocationId
+      ? balances.filter(({ locationId }) => locationId === settings.defaultLocationId)
+      : [];
     return {
       customers: customers.map((item) => ({ id: item.id, name: item.tradeName ?? item.legalName })),
       sellers,
@@ -132,13 +144,30 @@ export class PosService {
       settings,
       products: products.map((product) => {
         const price = this.priceFor(prices, product.id, auth.branchId);
-        const available = balances
+        const available = posBalances
           .filter(({ productId }) => productId === product.id)
           .reduce(
             (sum, balance) => sum.add(balance.quantity.sub(balance.reservedQuantity)),
             new Prisma.Decimal(0),
           );
-        return { ...product, salePrice: price?.salePrice ?? null, availableQuantity: available };
+        return {
+          ...product,
+          salePrice: price?.salePrice ?? null,
+          availableQuantity: available,
+          lots: lots
+            .filter(({ productId }) => productId === product.id)
+            .map((lot) => ({
+              id: lot.id,
+              lotNumber: lot.lotNumber,
+              expiresAt: lot.expiresAt,
+              availableQuantity: posBalances
+                .filter(({ lotId }) => lotId === lot.id)
+                .reduce(
+                  (sum, balance) => sum.add(balance.quantity.sub(balance.reservedQuantity)),
+                  new Prisma.Decimal(0),
+                ),
+            })),
+        };
       }),
     };
   }
@@ -150,6 +179,7 @@ export class PosService {
     return {
       defaultCustomerId: current?.defaultCustomerId ?? null,
       defaultSellerId: current?.defaultSellerId ?? null,
+      sellerMode: current?.sellerMode ?? 'default',
       defaultLocationId: current?.defaultLocationId ?? null,
     };
   }
@@ -167,15 +197,17 @@ export class PosService {
             },
           })
         : Promise.resolve(true),
-      this.prisma.employee.findFirst({
-        where: {
-          id: data.defaultSellerId,
-          companyId: auth.companyId,
-          active: true,
-          deletedAt: null,
-          OR: [{ branchId: auth.branchId }, { branchId: null }],
-        },
-      }),
+      data.defaultSellerId
+        ? this.prisma.employee.findFirst({
+            where: {
+              id: data.defaultSellerId,
+              companyId: auth.companyId,
+              active: true,
+              deletedAt: null,
+              OR: [{ branchId: auth.branchId }, { branchId: null }],
+            },
+          })
+        : Promise.resolve(true),
       this.prisma.stockLocation.findFirst({
         where: { id: data.defaultLocationId, companyId: auth.companyId },
       }),
@@ -206,6 +238,7 @@ export class PosService {
     return {
       defaultCustomerId: saved.defaultCustomerId,
       defaultSellerId: saved.defaultSellerId,
+      sellerMode: saved.sellerMode,
       defaultLocationId: saved.defaultLocationId,
     };
   }
@@ -310,8 +343,13 @@ export class PosService {
         throw new BadRequestException(`Desconto maior que o item ${product.description}`);
       if (price?.minimumPrice && gross.sub(discount).div(item.quantity).lt(price.minimumPrice))
         throw new ConflictException(`Preço abaixo do mínimo para ${product.description}`);
+      if (product.selectLotAtPos && !item.lotId)
+        throw new BadRequestException(`Selecione o lote de ${product.description}`);
+      if (item.lotId && !product.controlsLot)
+        throw new BadRequestException(`${product.description} não controla lote`);
       return {
         product,
+        lotId: item.lotId,
         quantity: new Prisma.Decimal(item.quantity),
         unitPrice,
         discount,
@@ -405,7 +443,7 @@ export class PosService {
                 orderId,
                 productId: line.product.id,
                 locationId: data.locationId,
-                lotId: null,
+                lotId: line.lotId,
                 description: line.product.description,
                 quantity: line.quantity,
                 unitPrice: line.unitPrice,
@@ -457,6 +495,7 @@ export class PosService {
             data.locationId,
             line.product,
             line.quantity,
+            line.lotId,
             now,
           );
           if (allocations.length === 1 && allocations[0]?.lotId)
@@ -829,6 +868,7 @@ export class PosService {
       allowsNegativeStock: boolean;
     },
     quantity: Prisma.Decimal,
+    selectedLotId: string | null,
     now: Date,
   ) {
     if (!product.controlsLot) {
@@ -881,6 +921,7 @@ export class PosService {
         companyId: auth.companyId,
         productId: product.id,
         id: { in: balances.flatMap(({ lotId }) => (lotId ? [lotId] : [])) },
+        ...(selectedLotId ? { id: selectedLotId } : {}),
       },
       orderBy: [{ expiresAt: 'asc' }, { manufacturedAt: 'asc' }],
     });
@@ -904,7 +945,11 @@ export class PosService {
       remaining = remaining.sub(used);
     }
     if (remaining.gt(0))
-      throw new ConflictException(`Estoque FEFO insuficiente para ${product.description}`);
+      throw new ConflictException(
+        selectedLotId
+          ? `Lote selecionado sem saldo válido para ${product.description}`
+          : `Estoque FEFO insuficiente para ${product.description}`,
+      );
     return allocations;
   }
   private priceFor(

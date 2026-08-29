@@ -478,6 +478,14 @@ export class SalesService {
     };
   }
 
+  async createOrder(auth: AccessTokenPayload, input: unknown) {
+    const quote = await this.createQuote(auth, input);
+    if (!quote) throw new ConflictException('Não foi possível preparar o pedido');
+    await this.transitionQuote(auth, quote.id, { toStatus: 'sent' });
+    await this.transitionQuote(auth, quote.id, { toStatus: 'approved' });
+    return this.convertQuote(auth, quote.id);
+  }
+
   async getOrder(auth: AccessTokenPayload, id: string) {
     return this.orderSummary(auth.companyId, await this.order(auth, id));
   }

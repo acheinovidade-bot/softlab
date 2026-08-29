@@ -16,6 +16,7 @@ export const posCheckoutSchema = z
           quantity: z.coerce.number().positive().max(999_999),
           unitPrice: money.nullable().default(null),
           discount: money.default(0),
+          lotId: z.string().uuid().nullable().default(null),
         }),
       )
       .min(1)
@@ -60,8 +61,18 @@ export const receiveCreditSchema = z.object({
   idempotencyKey: z.string().uuid(),
 });
 
-export const posSettingsSchema = z.object({
-  defaultCustomerId: z.string().uuid().nullable().default(null),
-  defaultSellerId: z.string().uuid(),
-  defaultLocationId: z.string().uuid(),
-});
+export const posSettingsSchema = z
+  .object({
+    defaultCustomerId: z.string().uuid().nullable().default(null),
+    sellerMode: z.enum(['default', 'per_sale']).default('default'),
+    defaultSellerId: z.string().uuid().nullable().default(null),
+    defaultLocationId: z.string().uuid(),
+  })
+  .superRefine((value, context) => {
+    if (value.sellerMode === 'default' && !value.defaultSellerId)
+      context.addIssue({
+        code: 'custom',
+        path: ['defaultSellerId'],
+        message: 'Selecione o vendedor padrão',
+      });
+  });

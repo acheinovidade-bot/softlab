@@ -3,11 +3,127 @@ import type { BranchSummary } from '@erp/contracts';
 import { apiRequest } from '../api';
 
 export function BranchesPanel({ canManage }: { canManage: boolean }) {
-  const [items, setItems] = useState<BranchSummary[]>([]); const [creating, setCreating] = useState(false); const [error, setError] = useState('');
-  async function load(): Promise<void> { try { setItems(await apiRequest<BranchSummary[]>('/admin/branches')); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao carregar'); } }
-  useEffect(() => { void load(); }, []);
-  async function create(event: React.FormEvent<HTMLFormElement>): Promise<void> { event.preventDefault(); const data = new FormData(event.currentTarget); try { await apiRequest('/admin/branches', { method: 'POST', body: JSON.stringify({ code: data.get('code'), legalName: data.get('legalName'), tradeName: data.get('tradeName') || undefined, taxId: data.get('taxId') }) }); setCreating(false); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao salvar'); } }
-  return <section><PageHeader title="Filiais" description="Unidades operacionais da empresa atual." action={canManage ? () => setCreating(true) : undefined} />{error && <div className="error">{error}</div>}{creating && <form className="inline-form" onSubmit={(event) => void create(event)}><label>Código<input name="code" required /></label><label>Razão social<input name="legalName" required /></label><label>Nome fantasia<input name="tradeName" /></label><label>CNPJ<input name="taxId" inputMode="numeric" pattern="\d{14}" required /></label><div className="form-actions"><button type="button" className="quiet" onClick={() => setCreating(false)}>Cancelar</button><button className="primary">Salvar filial</button></div></form>}<div className="table-card"><table><thead><tr><th>Código</th><th>Filial</th><th>CNPJ</th><th>Status</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.code}</strong></td><td>{item.tradeName || item.legalName}</td><td>{item.taxId}</td><td><span className={`badge ${item.status}`}>{item.status === 'active' ? 'Ativa' : 'Inativa'}</span></td></tr>)}</tbody></table>{items.length === 0 && <div className="empty-row">Nenhuma filial encontrada.</div>}</div></section>;
+  const [items, setItems] = useState<BranchSummary[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+  async function load(): Promise<void> {
+    try {
+      setItems(await apiRequest<BranchSummary[]>('/admin/branches'));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao carregar');
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+  async function create(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    try {
+      await apiRequest('/admin/branches', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: data.get('code'),
+          legalName: data.get('legalName'),
+          tradeName: data.get('tradeName') || undefined,
+          taxId: data.get('taxId'),
+        }),
+      });
+      setCreating(false);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar');
+    }
+  }
+  return (
+    <section>
+      <PageHeader
+        title="Filiais"
+        description="Unidades operacionais da empresa atual."
+        action={canManage ? () => setCreating(true) : undefined}
+      />
+      {error && <div className="error">{error}</div>}
+      {creating && (
+        <form className="inline-form" onSubmit={(event) => void create(event)}>
+          <label>
+            Código
+            <input name="code" required />
+          </label>
+          <label>
+            Razão social
+            <input name="legalName" required />
+          </label>
+          <label>
+            Nome fantasia
+            <input name="tradeName" />
+          </label>
+          <label>
+            CNPJ
+            <input name="taxId" inputMode="numeric" pattern="\d{14}" required />
+          </label>
+          <div className="form-actions">
+            <button type="button" className="quiet" onClick={() => setCreating(false)}>
+              Cancelar
+            </button>
+            <button className="primary">Salvar filial</button>
+          </div>
+        </form>
+      )}
+      <div className="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Filial</th>
+              <th>CNPJ</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id}>
+                <td>
+                  <strong>{item.code}</strong>
+                </td>
+                <td>{item.tradeName || item.legalName}</td>
+                <td>{item.taxId}</td>
+                <td>
+                  <span className={`badge ${item.status}`}>
+                    {item.status === 'active' ? 'Ativa' : 'Inativa'}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {items.length === 0 && <div className="empty-row">Nenhuma filial encontrada.</div>}
+      </div>
+    </section>
+  );
 }
 
-export function PageHeader({ title, description, action }: { title: string; description: string; action?: (() => void) | undefined }) { return <header className="page-header"><div><h1>{title}</h1><p>{description}</p></div>{action && <button className="primary" onClick={action}>+ Novo</button>}</header>; }
+export function PageHeader({
+  title,
+  description,
+  action,
+  actionLabel = '+ Novo',
+}: {
+  title: string;
+  description: string;
+  action?: (() => void) | undefined;
+  actionLabel?: string;
+}) {
+  return (
+    <header className="page-header">
+      <div>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {action && (
+        <button className="primary" onClick={action}>
+          {actionLabel}
+        </button>
+      )}
+    </header>
+  );
+}
