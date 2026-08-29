@@ -36,15 +36,17 @@ export const cardOperatorSchema = z.object({
     .max(40)
     .transform((value) => value.toUpperCase()),
   name: z.string().trim().min(2).max(120),
-  taxId: z.preprocess(
-    (value) =>
-      value === null || value === ''
-        ? null
-        : typeof value === 'string'
-          ? value.replace(/\D/g, '')
-          : value,
-    z.string().length(14).nullable(),
-  ).default(null),
+  taxId: z
+    .preprocess(
+      (value) =>
+        value === null || value === ''
+          ? null
+          : typeof value === 'string'
+            ? value.replace(/\D/g, '')
+            : value,
+      z.string().length(14).nullable(),
+    )
+    .default(null),
   debitRate: rate.default(0),
   creditRate: rate.default(0),
   installmentRate: rate.default(0),
@@ -69,3 +71,14 @@ export const paymentMethodSchema = z.object({
   active: z.coerce.boolean().default(true),
 });
 export const updatePaymentMethodSchema = paymentMethodSchema.partial();
+
+export const cashPeriodQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+  })
+  .refine(({ from, to }) => from <= to, 'Período inválido')
+  .refine(
+    ({ from, to }) => to.getTime() - from.getTime() <= 93 * 86_400_000,
+    'Período máximo de 93 dias',
+  );

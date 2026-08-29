@@ -1,5 +1,6 @@
 import {
   cardOperatorSchema,
+  cashPeriodQuerySchema,
   cashMovementSchema,
   closeCashSchema,
   openCashSchema,
@@ -41,5 +42,16 @@ describe('cash schemas', () => {
         maxInstallments: '12',
       }),
     ).toMatchObject({ code: 'CREDITO', maxInstallments: 12, fiscalCode: '99' });
+  });
+  it('accepts bounded cash periods and rejects unsafe ranges', () => {
+    expect(
+      cashPeriodQuerySchema.parse({ from: '2026-08-01', to: '2026-08-29' }).from,
+    ).toBeInstanceOf(Date);
+    expect(() => cashPeriodQuerySchema.parse({ from: '2026-08-30', to: '2026-08-01' })).toThrow(
+      'Período inválido',
+    );
+    expect(() => cashPeriodQuerySchema.parse({ from: '2026-01-01', to: '2026-08-29' })).toThrow(
+      'Período máximo de 93 dias',
+    );
   });
 });

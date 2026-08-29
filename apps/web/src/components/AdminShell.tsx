@@ -25,6 +25,7 @@ import {
   type WorkspaceSection,
 } from './ModuleWorkspacePanel';
 import { PaymentConfigurationPanel } from './PaymentConfigurationPanel';
+import { CashOperationsPanel } from './CashOperationsPanel';
 
 export type Section =
   | 'subscription'
@@ -50,24 +51,30 @@ export type Section =
   | 'roles'
   | 'card-operators'
   | 'payment-finalizers'
+  | 'pos-operations'
+  | 'cash-tape'
   | WorkspaceSection;
 
 type NavigationItem = { id: Section; label: string };
 
 const navigationGroups: Array<{
   label: string;
+  icon: NavIconName;
   sections: Section[];
 }> = [
   {
     label: 'Pessoas',
+    icon: 'people',
     sections: ['customers', 'suppliers', 'employees', 'returns', 'loyalty'],
   },
   {
     label: 'Logística',
+    icon: 'box',
     sections: ['products', 'stock', 'delivery'],
   },
   {
     label: 'Compras e Produção',
+    icon: 'cart',
     sections: [
       'purchase-orders',
       'quotations',
@@ -78,6 +85,7 @@ const navigationGroups: Array<{
   },
   {
     label: 'Comercial',
+    icon: 'chart',
     sections: [
       'sales-flow',
       'sales-force',
@@ -90,6 +98,7 @@ const navigationGroups: Array<{
   },
   {
     label: 'Frente de Caixa',
+    icon: 'register',
     sections: [
       'pos',
       'pos-operations',
@@ -102,6 +111,7 @@ const navigationGroups: Array<{
   },
   {
     label: 'Fiscal',
+    icon: 'document',
     sections: [
       'fiscal-documents',
       'fiscal-issuance',
@@ -114,6 +124,7 @@ const navigationGroups: Array<{
   },
   {
     label: 'Financeiro',
+    icon: 'wallet',
     sections: [
       'payables',
       'receivables',
@@ -127,6 +138,7 @@ const navigationGroups: Array<{
   },
   {
     label: 'Ordem de Serviço',
+    icon: 'tools',
     sections: [
       'service-orders',
       'services',
@@ -137,10 +149,12 @@ const navigationGroups: Array<{
   },
   {
     label: 'Relatórios',
+    icon: 'report',
     sections: ['reports-summary', 'reports-customers', 'reports-products'],
   },
   {
     label: 'Configurações',
+    icon: 'settings',
     sections: [
       'settings',
       'company-registration',
@@ -336,6 +350,7 @@ export function AdminShell({
     group.items.some(({ id }) => id === section),
   )?.label;
   const [expandedMenu, setExpandedMenu] = useState<string | null>(activeMenu ?? null);
+  const activeItem = available.find(({ id }) => id === section);
   useEffect(() => {
     if (activeMenu) setExpandedMenu(activeMenu);
   }, [activeMenu]);
@@ -343,10 +358,12 @@ export function AdminShell({
   return (
     <div className="app-layout">
       <aside className="sidebar">
-        <div className="logo">EH</div>
-        <div className="sidebar-title">
-          <strong>ERP Híbrido</strong>
-          <span>Gestão empresarial</span>
+        <div className="sidebar-brand">
+          <div className="logo">EH</div>
+          <div className="sidebar-title">
+            <strong>ERP Híbrido</strong>
+            <span>Gestão empresarial</span>
+          </div>
         </div>
         <nav aria-label="Módulos do sistema">
           {groupedNavigation.map((group) => (
@@ -359,8 +376,13 @@ export function AdminShell({
                   setExpandedMenu((current) => (current === group.label ? null : group.label))
                 }
               >
-                <span>{group.label}</span>
-                <span aria-hidden="true">{expandedMenu === group.label ? '−' : '+'}</span>
+                <span className="sidebar-menu-label">
+                  <NavIcon name={group.icon} />
+                  {group.label}
+                </span>
+                <span className="menu-chevron" aria-hidden="true">
+                  {expandedMenu === group.label ? '⌃' : '⌄'}
+                </span>
               </button>
               {expandedMenu === group.label && (
                 <div className="sidebar-menu-items">
@@ -383,16 +405,34 @@ export function AdminShell({
             </section>
           ))}
         </nav>
+        <footer className="sidebar-footer">
+          <span className="system-online">
+            <i /> Sistema operacional
+          </span>
+          <small>PostgreSQL conectado · v0.1</small>
+        </footer>
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <div>
-            <span className="context">EMPRESA · FILIAL</span>
-            <strong>{user.displayName}</strong>
+          <div className="topbar-context">
+            <span className="context">{activeMenu ?? 'ERP HÍBRIDO'}</span>
+            <strong>{activeItem?.label ?? 'Visão geral'}</strong>
           </div>
-          <button className="quiet" onClick={() => void onLogout()}>
-            Sair
-          </button>
+          <div className="topbar-actions">
+            <span className="branch-chip">
+              <i /> Matriz · Loja Centro
+            </span>
+            <div className="user-chip" aria-label={`Usuário conectado: ${user.displayName}`}>
+              <span>{initials(user.displayName)}</span>
+              <div>
+                <strong>{user.displayName}</strong>
+                <small>Administrador</small>
+              </div>
+            </div>
+            <button className="quiet topbar-logout" onClick={() => void onLogout()}>
+              Sair
+            </button>
+          </div>
         </header>
         <main className="content">
           {isWorkspaceSection(section) && <ModuleWorkspacePanel section={section} />}
@@ -456,6 +496,8 @@ export function AdminShell({
               canManage={user.permissions.includes('finance.cash.operate')}
             />
           )}
+          {section === 'pos-operations' && <CashOperationsPanel mode="operations" />}
+          {section === 'cash-tape' && <CashOperationsPanel mode="tape" />}
           {section === 'food' && (
             <FoodServicePanel
               canManage={user.permissions.includes('food.tables.manage')}
@@ -541,4 +583,102 @@ export function AdminShell({
       </div>
     </div>
   );
+}
+
+type NavIconName =
+  | 'people'
+  | 'box'
+  | 'cart'
+  | 'chart'
+  | 'register'
+  | 'document'
+  | 'wallet'
+  | 'tools'
+  | 'report'
+  | 'settings';
+
+function NavIcon({ name }: { name: NavIconName }) {
+  const paths: Record<NavIconName, React.ReactNode> = {
+    people: (
+      <>
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3.5 19c.5-4 2.4-6 5.5-6s5 2 5.5 6M16 5.5a3 3 0 0 1 0 5.5M16 13c2.7.3 4.2 2.3 4.5 5" />
+      </>
+    ),
+    box: (
+      <>
+        <path d="m4 7 8-4 8 4-8 4-8-4Z" />
+        <path d="M4 7v10l8 4 8-4V7M12 11v10" />
+      </>
+    ),
+    cart: (
+      <>
+        <path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 2-1.6L20.5 8H6" />
+        <circle cx="10" cy="20" r="1" />
+        <circle cx="18" cy="20" r="1" />
+      </>
+    ),
+    chart: (
+      <>
+        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+      </>
+    ),
+    register: (
+      <>
+        <rect x="3" y="6" width="18" height="14" rx="2" />
+        <path d="M7 6V3h10v3M7 11h10M8 15h2M14 15h2" />
+      </>
+    ),
+    document: (
+      <>
+        <path d="M6 2h8l4 4v16H6z" />
+        <path d="M14 2v5h5M9 12h6M9 16h6" />
+      </>
+    ),
+    wallet: (
+      <>
+        <path d="M3 6h16a2 2 0 0 1 2 2v11H5a2 2 0 0 1-2-2V6Z" />
+        <path d="M3 6 16 3v3M16 11h5v5h-5a2.5 2.5 0 0 1 0-5Z" />
+      </>
+    ),
+    tools: (
+      <>
+        <path d="m14 6 4-4 4 4-4 4M3 21l9-9M6 3l15 15-3 3L3 6z" />
+      </>
+    ),
+    report: (
+      <>
+        <path d="M5 21V3h14v18zM9 17v-4M13 17V8M17 17v-6" />
+      </>
+    ),
+    settings: (
+      <>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      className="nav-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
+  );
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
 }

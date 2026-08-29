@@ -186,6 +186,10 @@ export function PosPanel({
   }, [total]);
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
+      if (event.key === 'F1') {
+        event.preventDefault();
+        startNewSale();
+      }
       if (event.key === 'F2') {
         event.preventDefault();
         searchRef.current?.focus();
@@ -199,6 +203,10 @@ export function PosPanel({
         event.preventDefault();
         formRef.current?.requestSubmit();
       }
+      if (event.key === 'F10' && onOpenSettings) {
+        event.preventDefault();
+        onOpenSettings();
+      }
       if (
         event.key === 'Escape' &&
         cart.length &&
@@ -208,7 +216,7 @@ export function PosPanel({
     }
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
-  }, [cart.length, receipt]);
+  }, [cart.length, receipt, onOpenSettings]);
 
   function add(product: PosProduct) {
     if (product.salePrice === null && !product.openPrice)
@@ -372,6 +380,17 @@ export function PosPanel({
     requestKey.current = randomId();
     if (clearReceipt) setReceipt(null);
   }
+  function startNewSale() {
+    if (cart.length && !window.confirm('Iniciar uma nova venda e remover os itens atuais?')) return;
+    reset();
+    requestAnimationFrame(() => searchRef.current?.focus());
+  }
+  function cancelCurrentSale() {
+    if (!cart.length) return;
+    if (!window.confirm('Cancelar a venda atual e remover todos os itens?')) return;
+    reset();
+    requestAnimationFrame(() => searchRef.current?.focus());
+  }
   return (
     <section className="pos-screen">
       <header className="pos-header">
@@ -380,11 +399,6 @@ export function PosPanel({
           <h1>Venda rápida</h1>
         </div>
         <div className="pos-header-tools">
-          {onOpenSettings && (
-            <button type="button" className="quiet" onClick={onOpenSettings}>
-              Configurações do PDV
-            </button>
-          )}
           <div className={`pos-connectivity ${online ? 'online' : 'offline'}`}>
             <span>{online ? '● Online' : '● Offline'}</span>
             {pendingOffline > 0 && (
@@ -393,22 +407,37 @@ export function PosPanel({
               </strong>
             )}
           </div>
-          <div className="pos-shortcuts">
-            <span>
-              <kbd>F2</kbd> Produto
-            </span>
-            <span>
-              <kbd>F4</kbd> Pagamento
-            </span>
-            <span>
-              <kbd>F9</kbd> Finalizar
-            </span>
-            <span>
-              <kbd>Esc</kbd> Cancelar
-            </span>
-          </div>
         </div>
       </header>
+      <nav className="pos-actionbar" aria-label="Ações rápidas do PDV">
+        <button type="button" onClick={startNewSale}>
+          <span className="pos-action-icon">＋</span>
+          <strong>Nova venda</strong>
+          <kbd>F1</kbd>
+        </button>
+        <button type="button" onClick={() => searchRef.current?.focus()}>
+          <span className="pos-action-icon">⌕</span>
+          <strong>Buscar produto</strong>
+          <kbd>F2</kbd>
+        </button>
+        <button type="button" disabled={!cart.length} onClick={() => paymentRef.current?.focus()}>
+          <span className="pos-action-icon">$</span>
+          <strong>Pagamento</strong>
+          <kbd>F4</kbd>
+        </button>
+        <button type="button" disabled={!cart.length} onClick={cancelCurrentSale}>
+          <span className="pos-action-icon">×</span>
+          <strong>Cancelar venda</strong>
+          <kbd>Esc</kbd>
+        </button>
+        {onOpenSettings && (
+          <button type="button" onClick={onOpenSettings}>
+            <span className="pos-action-icon">⚙</span>
+            <strong>Configurar PDV</strong>
+            <kbd>F10</kbd>
+          </button>
+        )}
+      </nav>
       {error && (
         <div className="error" role="alert">
           {error}

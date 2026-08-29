@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { RequireModules } from '../auth/modules.decorator';
@@ -11,6 +21,18 @@ import { CashService } from './cash.service';
 @RequireModules('finance')
 export class CashController {
   constructor(private readonly service: CashService) {}
+  @Get('operations') @RequirePermissions('finance.cash.read') operations(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: unknown,
+  ) {
+    return this.service.operations(request.auth, query);
+  }
+  @Get('tape') @RequirePermissions('finance.cash.read') tape(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: unknown,
+  ) {
+    return this.service.tape(request.auth, query);
+  }
   @Get('configuration') @RequirePermissions('finance.cash.read') configuration(
     @Req() request: AuthenticatedRequest,
   ) {

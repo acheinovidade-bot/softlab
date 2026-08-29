@@ -8,8 +8,6 @@ export type WorkspaceSection =
   | 'invoicing'
   | 'commissions'
   | 'promotions'
-  | 'pos-operations'
-  | 'cash-tape'
   | 'fiscal-documents'
   | 'fiscal-issuance'
   | 'inbound-nfe'
@@ -89,16 +87,6 @@ const modules: Record<
     title: 'Promoções',
     description: 'Campanhas por produto, quantidade, cliente e período.',
     features: ['Preço promocional', 'Leve e pague', 'Regras cumulativas'],
-  },
-  'pos-operations': {
-    title: 'Gerenciar operações do PDV',
-    description: 'Consulta central de todas as vendas realizadas no caixa.',
-    features: ['Venda e operador', 'Situação fiscal', 'Cancelamento autorizado'],
-  },
-  'cash-tape': {
-    title: 'Fita de caixa',
-    description: 'Linha cronológica de vendas, recebimentos, sangrias e suprimentos.',
-    features: ['Todas as vendas', 'Eventos por operador', 'Auditoria por data e hora'],
   },
   'fiscal-documents': {
     title: 'Documentos fiscais',

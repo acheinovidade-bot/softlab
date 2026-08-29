@@ -5,6 +5,7 @@ import { uuidV7 } from '../common/uuid-v7';
 import { PrismaService } from '../infrastructure/database/prisma.service';
 import {
   cardOperatorSchema,
+  cashPeriodQuerySchema,
   cashMovementSchema,
   closeCashSchema,
   createCashRegisterSchema,
@@ -17,6 +18,170 @@ import {
 @Injectable()
 export class CashService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async operations(auth: AccessTokenPayload, input: unknown) {
+    const period = cashPeriodQuerySchema.parse(input);
+    const to = endOfDay(period.to);
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        companyId: auth.companyId,
+        branchId: auth.branchId,
+        soldAt: { gte: period.from, lte: to },
+      },
+      orderBy: { soldAt: 'desc' },
+      take: 500,
+    });
+    const orderIds = sales.map(({ orderId }) => orderId);
+    const [orders, payments, fiscalDocuments] = await Promise.all([
+      this.prisma.order.findMany({ where: { companyId: auth.companyId, id: { in: orderIds } } }),
+      this.prisma.payment.findMany({
+        where: { companyId: auth.companyId, orderId: { in: orderIds } },
+      }),
+      this.prisma.fiscalDocument.findMany({
+        where: {
+          companyId: auth.companyId,
+          branchId: auth.branchId,
+          saleId: { in: sales.map(({ id }) => id) },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    const [customers, sellers, methods] = await Promise.all([
+      this.prisma.customer.findMany({
+        where: {
+          companyId: auth.companyId,
+          id: { in: orders.flatMap(({ customerId }) => (customerId ? [customerId] : [])) },
+        },
+        select: { id: true, legalName: true, tradeName: true },
+      }),
+      this.prisma.employee.findMany({
+        where: {
+          companyId: auth.companyId,
+          id: { in: orders.flatMap(({ sellerId }) => (sellerId ? [sellerId] : [])) },
+        },
+        select: { id: true, name: true },
+      }),
+      this.prisma.paymentMethod.findMany({
+        where: {
+          companyId: auth.companyId,
+          id: { in: payments.map(({ paymentMethodId }) => paymentMethodId) },
+        },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const records = sales.map((sale) => {
+      const order = orders.find(({ id }) => id === sale.orderId);
+      const salePayments = payments.filter(({ orderId }) => orderId === sale.orderId);
+      const fiscal = fiscalDocuments.find(({ saleId }) => saleId === sale.id);
+      return {
+        id: sale.id,
+        number: sale.number,
+        soldAt: sale.soldAt,
+        status: sale.status,
+        origin: order?.origin ?? 'pos',
+        customer:
+          customers.find(({ id }) => id === order?.customerId)?.tradeName ??
+          customers.find(({ id }) => id === order?.customerId)?.legalName ??
+          'Consumidor não identificado',
+        operator: sellers.find(({ id }) => id === order?.sellerId)?.name ?? 'Não informado',
+        total: sale.total,
+        feeAmount: salePayments.reduce(
+          (sum, item) => sum.add(item.feeAmount),
+          new Prisma.Decimal(0),
+        ),
+        netAmount: salePayments.reduce(
+          (sum, item) => sum.add(item.netAmount),
+          new Prisma.Decimal(0),
+        ),
+        payments: salePayments.map((payment) => ({
+          method: methods.find(({ id }) => id === payment.paymentMethodId)?.name ?? 'Pagamento',
+          amount: payment.amount,
+          installments: payment.installments,
+        })),
+        fiscal: fiscal
+          ? {
+              type: fiscal.documentType,
+              status: fiscal.status,
+              number: fiscal.number?.toString() ?? null,
+            }
+          : null,
+      };
+    });
+    return {
+      period: { from: period.from, to },
+      totals: {
+        sales: records.length,
+        gross: records.reduce((sum, item) => sum.add(item.total), new Prisma.Decimal(0)),
+        fees: records.reduce((sum, item) => sum.add(item.feeAmount), new Prisma.Decimal(0)),
+        net: records.reduce((sum, item) => sum.add(item.netAmount), new Prisma.Decimal(0)),
+      },
+      records,
+    };
+  }
+
+  async tape(auth: AccessTokenPayload, input: unknown) {
+    const period = cashPeriodQuerySchema.parse(input);
+    const to = endOfDay(period.to);
+    const registers = await this.prisma.cashRegister.findMany({
+      where: { companyId: auth.companyId, branchId: auth.branchId },
+      select: { id: true, code: true, name: true },
+    });
+    const sessions = await this.prisma.cashSession.findMany({
+      where: { companyId: auth.companyId, cashRegisterId: { in: registers.map(({ id }) => id) } },
+    });
+    const movements = await this.prisma.cashMovement.findMany({
+      where: {
+        companyId: auth.companyId,
+        cashSessionId: { in: sessions.map(({ id }) => id) },
+        occurredAt: { gte: period.from, lte: to },
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: 1000,
+    });
+    const [methods, users] = await Promise.all([
+      this.prisma.paymentMethod.findMany({
+        where: {
+          companyId: auth.companyId,
+          id: {
+            in: movements.flatMap(({ paymentMethodId }) =>
+              paymentMethodId ? [paymentMethodId] : [],
+            ),
+          },
+        },
+        select: { id: true, name: true },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: movements.map(({ createdBy }) => createdBy) } },
+        select: { id: true, displayName: true },
+      }),
+    ]);
+    const entries = movements.map((movement) => {
+      const session = sessions.find(({ id }) => id === movement.cashSessionId);
+      return {
+        id: movement.id,
+        occurredAt: movement.occurredAt,
+        type: movement.type,
+        description: movement.description,
+        amount: movement.amount,
+        direction: ['payment', 'withdrawal'].includes(movement.type) ? 'out' : 'in',
+        method:
+          methods.find(({ id }) => id === movement.paymentMethodId)?.name ?? 'Sem finalizador',
+        register: registers.find(({ id }) => id === session?.cashRegisterId)?.name ?? 'Caixa',
+        operator: users.find(({ id }) => id === movement.createdBy)?.displayName ?? 'Sistema',
+      };
+    });
+    const inflows = entries
+      .filter(({ direction }) => direction === 'in')
+      .reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
+    const outflows = entries
+      .filter(({ direction }) => direction === 'out')
+      .reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
+    return {
+      period: { from: period.from, to },
+      totals: { entries: entries.length, inflows, outflows, balance: inflows.sub(outflows) },
+      entries,
+    };
+  }
 
   async configuration(auth: AccessTokenPayload) {
     const [cardOperators, paymentMethods] = await Promise.all([
@@ -402,4 +567,10 @@ export class CashService {
 
 function defined<T extends object>(value: T) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function endOfDay(value: Date) {
+  const result = new Date(value);
+  result.setUTCHours(23, 59, 59, 999);
+  return result;
 }
