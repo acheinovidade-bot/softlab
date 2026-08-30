@@ -123,6 +123,19 @@ describe('PosPanel', () => {
       locations: [{ id: 'location-1', code: 'EXP', name: 'Expedição' }],
       products: [
         {
+          id: 'product-auto',
+          code: 'AUTO-1',
+          barcode: '789100000003',
+          description: 'Produto com lote automático',
+          openPrice: false,
+          controlsLot: true,
+          controlsExpiry: true,
+          selectLotAtPos: false,
+          salePrice: '10',
+          availableQuantity: '4',
+          lots: [],
+        },
+        {
           id: 'product-1',
           code: 'LOTE-1',
           barcode: '789100000002',
@@ -146,6 +159,9 @@ describe('PosPanel', () => {
     } as never);
     render(<PosPanel canDiscount={false} />);
     const search = await screen.findByPlaceholderText('Código, código de barras ou descrição');
+    fireEvent.change(search, { target: { value: 'AUTO-1' } });
+    expect(await screen.findByText('Produto com lote automático')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Selecione o lote' })).not.toBeInTheDocument();
     fireEvent.change(search, { target: { value: 'LOTE-1' } });
     fireEvent.keyDown(search, { key: 'Enter' });
     fireEvent.click(await screen.findByRole('button', { name: /Lote L-2099/ }));

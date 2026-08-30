@@ -475,7 +475,7 @@ export function PosPanel({
     setProductListOpen(false);
     if (product.salePrice === null && !product.openPrice)
       return setError('Produto sem preço vigente');
-    if (product.selectLotAtPos) {
+    if (product.selectLotAtPos === true) {
       const validLots = product.lots.filter(
         (lot) => !isExpired(lot.expiresAt) && Number(lot.availableQuantity) > 0,
       );
@@ -581,6 +581,7 @@ export function PosPanel({
           netAmount: paymentNet(lookup, payment),
         })),
       });
+      applyLocalStockOut(cart);
       setPaymentOpen(false);
       reset(false);
     } catch (reason) {
@@ -648,6 +649,7 @@ export function PosPanel({
             netAmount: paymentNet(lookup, payment),
           })),
         });
+        applyLocalStockOut(cart);
         setPaymentOpen(false);
         reset(false);
       } else setError(message(reason));
@@ -675,6 +677,32 @@ export function PosPanel({
     setSaleNotes('');
     requestKey.current = randomId();
     if (clearReceipt) setReceipt(null);
+  }
+  function applyLocalStockOut(soldItems: CartItem[]) {
+    setLookup((current) => {
+      const next = {
+        ...current,
+        products: current.products.map((product) => {
+          const sold = soldItems.find(({ id }) => id === product.id);
+          if (!sold) return product;
+          let remaining = sold.quantity;
+          const lots = product.lots.map((lot) => {
+            if (remaining <= 0 || (sold.lotId && lot.id !== sold.lotId)) return lot;
+            const available = Number(lot.availableQuantity);
+            const used = Math.min(available, remaining);
+            remaining -= used;
+            return { ...lot, availableQuantity: Math.max(0, available - used).toString() };
+          });
+          return {
+            ...product,
+            availableQuantity: Math.max(0, Number(product.availableQuantity) - sold.quantity).toString(),
+            lots,
+          };
+        }),
+      };
+      void cachePosLookups(offlineScope, next).catch(() => undefined);
+      return next;
+    });
   }
   function cancelCurrentSale() {
     if (!cart.length) return;
@@ -1449,13 +1477,12 @@ export function PosPanel({
                 <span>
                   <strong>{item.code}</strong>
                   {item.description}
-                  <small>
-                    {item.lotNumber
-                      ? `Lote ${item.lotNumber}${item.lotExpiresAt ? ` · val. ${date(item.lotExpiresAt)}` : ''}`
-                      : item.controlsLot
-                        ? 'Baixa automática FEFO'
-                        : `Disponível ${number(item.availableQuantity)}`}
-                  </small>
+                  {item.lotNumber && (
+                    <small>
+                      Lote {item.lotNumber}
+                      {item.lotExpiresAt ? ` · val. ${date(item.lotExpiresAt)}` : ''}
+                    </small>
+                  )}
                 </span>
                 <input
                   aria-label={`Quantidade de ${item.description}`}
