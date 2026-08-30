@@ -34,6 +34,11 @@ describe('POS checkout schema', () => {
     ).toBe('2026-09-30');
     expect(() => posCheckoutSchema.parse({ ...checkout, creditDueDate: '30/09/2026' })).toThrow();
   });
+  it('allows a sale without seller and normalizes freight and surcharge', () => {
+    expect(
+      posCheckoutSchema.parse({ ...checkout, sellerId: null, freight: '4.50', surcharge: '2.25' }),
+    ).toMatchObject({ sellerId: null, freight: 4.5, surcharge: 2.25 });
+  });
 });
 
 describe('POS settings schema', () => {

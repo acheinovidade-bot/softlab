@@ -368,7 +368,7 @@ export function AdminShell({
   }, [activeMenu]);
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${section === 'pos' ? 'pos-app-mode' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="logo">EH</div>
@@ -491,6 +491,9 @@ export function AdminShell({
               canReceiveCredit={user.permissions.includes('sales.credit.receive')}
               offlineScope={`${user.companyId}:${user.branchId}`}
               onOpenSettings={() => setSection('settings')}
+              onNavigate={(destination) => setSection(destination)}
+              onExit={() => setSection('dashboard')}
+              requireCashOpening={user.permissions.includes('finance.cash.operate')}
             />
           )}
           {section === 'cash' && (

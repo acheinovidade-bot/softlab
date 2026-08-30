@@ -31,13 +31,24 @@ describe('PosPanel', () => {
     } as never);
 
     render(<PosPanel canDiscount={false} />);
-    expect(screen.getByRole('heading', { name: 'Venda rápida' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Liberado para uma nova venda' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cliente F2' }));
+    expect(screen.getByRole('dialog', { name: 'Identificar cliente' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Consumidor não identificado.*Selecionar/ }));
     const search = await screen.findByPlaceholderText('Código, código de barras ou descrição');
     fireEvent.change(search, { target: { value: '789100000001' } });
     fireEvent.keyDown(search, { key: 'Enter' });
     expect(await screen.findByText('Café especial')).toBeInTheDocument();
-    expect(screen.getAllByText(/18,90/)).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'F9 · Finalizar venda' })).toBeEnabled();
+    expect(screen.getAllByText(/18,90/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole('button', { name: 'Finalizar (F5)' })).toBeEnabled();
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(screen.getByRole('dialog', { name: 'Menu de funções' })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(window, { key: 'F5' });
+    expect(screen.getByRole('dialog', { name: 'Forma de recebimento' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Trabalhar online' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -92,6 +103,11 @@ describe('PosPanel', () => {
     fireEvent.keyDown(search, { key: 'Enter' });
     fireEvent.click(await screen.findByRole('button', { name: /Lote L-2099/ }));
     expect(screen.getByText(/Lote L-2099/)).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Vendedor desta venda' })).toBeInTheDocument();
+    const sellerDialog = await screen.findByRole('dialog', { name: 'Identificar vendedor' });
+    expect(sellerDialog).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Marina Costa Vendedor disponível Selecionar' }),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Identificar vendedor' })).not.toBeInTheDocument();
   });
 });

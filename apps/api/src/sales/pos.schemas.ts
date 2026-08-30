@@ -5,8 +5,10 @@ export const posCheckoutSchema = z
   .object({
     idempotencyKey: z.string().uuid(),
     customerId: z.string().uuid().nullable().default(null),
-    sellerId: z.string().uuid(),
+    sellerId: z.string().uuid().nullable().default(null),
     locationId: z.string().uuid(),
+    surcharge: money.default(0),
+    freight: money.default(0),
     notes: z.string().trim().max(2000).nullable().default(null),
     creditDueDate: z.string().date().nullable().default(null),
     items: z

@@ -48,6 +48,22 @@ type CartItem = PosProduct & {
   lotExpiresAt: string | null;
 };
 type PaymentDraft = { key: number; paymentMethodId: string; amount: string; installments: number };
+type PosDestination =
+  'customers' | 'cash' | 'pos-operations' | 'cash-tape' | 'pre-sales' | 'returns' | 'loyalty';
+type HeldSale = {
+  id: string;
+  createdAt: string;
+  cart: CartItem[];
+  payments: PaymentDraft[];
+  customerId: string;
+  sellerId: string;
+  surcharge?: number;
+  freight?: number;
+};
+type CashOverview = {
+  registers: Array<{ id: string; code: string; name: string }>;
+  sessions: Array<{ id: string; status: string; register: { name: string } }>;
+};
 
 export function PosPanel({
   canDiscount,
@@ -55,12 +71,18 @@ export function PosPanel({
   canReceiveCredit = false,
   offlineScope = 'default',
   onOpenSettings,
+  onNavigate,
+  onExit,
+  requireCashOpening = false,
 }: {
   canDiscount: boolean;
   canReadCredit?: boolean;
   canReceiveCredit?: boolean;
   offlineScope?: string;
   onOpenSettings?: () => void;
+  onNavigate?: (destination: PosDestination) => void;
+  onExit?: () => void;
+  requireCashOpening?: boolean;
 }) {
   const [lookup, setLookup] = useState<Lookup>({
     issuer: { tradeName: null, legalName: '', taxId: '' },
@@ -83,6 +105,25 @@ export function PosPanel({
   const [lotSelection, setLotSelection] = useState<PosProduct | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [heldSalesOpen, setHeldSalesOpen] = useState(false);
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [sellerPickerOpen, setSellerPickerOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [saleNotes, setSaleNotes] = useState('');
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
+  const [surcharge, setSurcharge] = useState(0);
+  const [freight, setFreight] = useState(0);
+  const [cashOpening, setCashOpening] = useState(
+    () => requireCashOpening && localStorage.getItem(`erp:cash-open:${offlineScope}`) !== 'open',
+  );
+  const [cashRegisters, setCashRegisters] = useState<CashOverview['registers']>([]);
+  const [cashPrintConfirm, setCashPrintConfirm] = useState<{
+    amount: number;
+    notes: string;
+  } | null>(null);
   const [online, setOnline] = useState(() => navigator.onLine);
   const [forcedOffline, setForcedOffline] = useState(
     () => localStorage.getItem('erp:pos-operation-mode') === 'offline',
@@ -91,12 +132,14 @@ export function PosPanel({
   const [syncing, setSyncing] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const paymentRef = useRef<HTMLInputElement>(null);
+  const customerRef = useRef<HTMLInputElement>(null);
+  const cashFormRef = useRef<HTMLFormElement>(null);
   const requestKey = useRef(randomId());
-  const total = useMemo(
+  const itemsTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.quantity * item.unitPrice - item.discount, 0),
     [cart],
   );
+  const total = itemsTotal + surcharge + freight;
   const paid = payments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const results = search.trim()
     ? lookup.products
@@ -159,6 +202,29 @@ export function PosPanel({
     })();
   }, [offlineScope, forcedOffline]);
 
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(`erp:held-sales:${offlineScope}`) ?? '[]',
+      ) as HeldSale[];
+      setHeldSales(Array.isArray(saved) ? saved : []);
+    } catch {
+      setHeldSales([]);
+    }
+    if (!requireCashOpening || localStorage.getItem(`erp:cash-open:${offlineScope}`) === 'open')
+      return;
+    void apiRequest<CashOverview>('/cash/overview')
+      .then((overview) => {
+        setCashRegisters(overview.registers);
+        const open = overview.sessions.find(({ status }) => status === 'open');
+        if (open) {
+          localStorage.setItem(`erp:cash-open:${offlineScope}`, 'open');
+          setCashOpening(false);
+        }
+      })
+      .catch((reason) => setError(message(reason)));
+  }, [offlineScope, requireCashOpening]);
+
   function applyDefaults(data: Lookup) {
     const customer = data.settings?.defaultCustomerId;
     const seller = data.settings?.defaultSellerId;
@@ -219,35 +285,152 @@ export function PosPanel({
     function shortcut(event: KeyboardEvent) {
       if (event.key === 'F1') {
         event.preventDefault();
-        startNewSale();
+        setHelpOpen(true);
       }
       if (event.key === 'F2') {
+        event.preventDefault();
+        setCustomerPickerOpen(true);
+        requestAnimationFrame(() => customerRef.current?.focus());
+      }
+      if (event.key === 'F3') {
         event.preventDefault();
         searchRef.current?.focus();
       }
       if (event.key === 'F4') {
         event.preventDefault();
-        paymentRef.current?.focus();
+        setHeldSalesOpen(true);
+      }
+      if (event.key === 'F5') {
+        event.preventDefault();
+        if (helpOpen) setHelpOpen(false);
+        if (cashOpening) cashFormRef.current?.requestSubmit();
+        else if (cart.length) setPaymentOpen(true);
+      }
+      if (event.key === 'F6') {
+        event.preventDefault();
+        cancelCurrentSale();
+      }
+      if (event.key === 'F7') {
+        event.preventDefault();
+        holdCurrentSale();
+      }
+      if (event.key === 'F8') {
+        event.preventDefault();
+        if (!receipt) formRef.current?.requestSubmit();
       }
       if (event.key === 'F9') {
-        if (receipt) return;
         event.preventDefault();
-        formRef.current?.requestSubmit();
+        onNavigate?.('pre-sales');
+      }
+      if (event.key === 'F12') {
+        event.preventDefault();
+        setNotesOpen(true);
       }
       if (event.key === 'F10' && onOpenSettings) {
         event.preventDefault();
         onOpenSettings();
       }
+      if (event.key === 'Home' && onOpenSettings) {
+        event.preventDefault();
+        onOpenSettings();
+      }
+      if (event.ctrlKey && event.key === 'End') {
+        event.preventDefault();
+        onNavigate?.('customers');
+      }
+      if (event.ctrlKey && event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        onNavigate?.('cash');
+      }
+      if (event.ctrlKey && event.altKey && event.key === '=') {
+        event.preventDefault();
+        onOpenSettings?.();
+      }
+      if (!event.ctrlKey && !event.altKey && event.key === '=') {
+        event.preventDefault();
+        onNavigate?.('cash');
+      }
+      if (!event.ctrlKey && event.key === 'End') {
+        event.preventDefault();
+        onNavigate?.('cash');
+      }
+      if (event.altKey && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        customerRef.current?.focus();
+      }
+      if (event.ctrlKey && event.key === 'F9') {
+        event.preventDefault();
+        onNavigate?.('pre-sales');
+      }
+      if (event.key === 'F11') {
+        event.preventDefault();
+        onNavigate?.('pos-operations');
+      }
+      if (event.altKey && event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        onNavigate?.('cash-tape');
+      }
+      if (event.key === 'Insert') {
+        event.preventDefault();
+        onNavigate?.('cash');
+      }
+      if (event.ctrlKey && event.key.toLowerCase() === 't') {
+        event.preventDefault();
+        onNavigate?.('returns');
+      }
+      if (event.ctrlKey && event.key.toLowerCase() === 'g') {
+        event.preventDefault();
+        onNavigate?.('loyalty');
+      }
+      if (event.key === 'Delete' && cart.length) {
+        event.preventDefault();
+        setCart((current) => current.slice(0, -1));
+      }
       if (
         event.key === 'Escape' &&
-        cart.length &&
-        window.confirm('Cancelar a venda atual e remover todos os itens?')
-      )
-        reset();
+        (helpOpen ||
+          paymentOpen ||
+          heldSalesOpen ||
+          customerPickerOpen ||
+          sellerPickerOpen ||
+          notesOpen)
+      ) {
+        setHelpOpen(false);
+        setPaymentOpen(false);
+        setHeldSalesOpen(false);
+        setCustomerPickerOpen(false);
+        setSellerPickerOpen(false);
+        setNotesOpen(false);
+      } else if (event.key === 'Escape' && cashOpening) onExit?.();
+      if (paymentOpen && /^[1-9]$/.test(event.key)) {
+        const method = lookup.paymentMethods[Number(event.key) - 1];
+        if (method) {
+          event.preventDefault();
+          setPayments((current) =>
+            current.map((item, index) =>
+              index === 0 ? { ...item, paymentMethodId: method.id, installments: 1 } : item,
+            ),
+          );
+        }
+      }
     }
     window.addEventListener('keydown', shortcut);
     return () => window.removeEventListener('keydown', shortcut);
-  }, [cart.length, receipt, onOpenSettings]);
+  }, [
+    cart.length,
+    receipt,
+    onOpenSettings,
+    onNavigate,
+    onExit,
+    helpOpen,
+    paymentOpen,
+    heldSalesOpen,
+    customerPickerOpen,
+    sellerPickerOpen,
+    notesOpen,
+    cashOpening,
+    lookup.paymentMethods,
+  ]);
 
   function add(product: PosProduct) {
     if (product.salePrice === null && !product.openPrice)
@@ -285,6 +468,7 @@ export function PosPanel({
     setSearch('');
     setError('');
     setLotSelection(null);
+    if (lookup.settings?.sellerMode === 'per_sale' && !sellerId) setSellerPickerOpen(true);
     searchRef.current?.focus();
   }
   function addFromSearch() {
@@ -303,7 +487,10 @@ export function PosPanel({
   async function checkout(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!cart.length) return setError('Adicione ao menos um produto');
-    if (!sellerId) return setError('Selecione o vendedor desta venda ou configure um padrão');
+    if (lookup.settings?.sellerMode === 'per_sale' && !sellerId) {
+      setSellerPickerOpen(true);
+      return setError('Identifique o vendedor para concluir esta venda');
+    }
     if (!locationId) return setError('Configure a movimentação interna do PDV');
     if (Math.abs(paid - total) > 0.009)
       return setError('Os pagamentos devem fechar exatamente o total da venda');
@@ -315,9 +502,11 @@ export function PosPanel({
       const body = {
         idempotencyKey: requestKey.current,
         customerId: customerId || null,
-        sellerId,
+        sellerId: sellerId || null,
         locationId,
-        notes: field(form, 'notes'),
+        surcharge,
+        freight,
+        notes: saleNotes.trim() || null,
         creditDueDate: field(form, 'creditDueDate'),
         items: cart.map((item) => ({
           productId: item.id,
@@ -356,6 +545,7 @@ export function PosPanel({
           netAmount: paymentNet(lookup, payment),
         })),
       });
+      setPaymentOpen(false);
       reset(false);
     } catch (reason) {
       if (!navigator.onLine || isNetworkFailure(reason)) {
@@ -363,9 +553,11 @@ export function PosPanel({
         const body = {
           idempotencyKey: key,
           customerId: customerId || null,
-          sellerId,
+          sellerId: sellerId || null,
           locationId,
-          notes: field(form, 'notes'),
+          surcharge,
+          freight,
+          notes: saleNotes.trim() || null,
           creditDueDate: field(form, 'creditDueDate'),
           items: cart.map((item) => ({
             productId: item.id,
@@ -420,6 +612,7 @@ export function PosPanel({
             netAmount: paymentNet(lookup, payment),
           })),
         });
+        setPaymentOpen(false);
         reset(false);
       } else setError(message(reason));
     } finally {
@@ -441,13 +634,11 @@ export function PosPanel({
         installments: 1,
       },
     ]);
+    setSurcharge(0);
+    setFreight(0);
+    setSaleNotes('');
     requestKey.current = randomId();
     if (clearReceipt) setReceipt(null);
-  }
-  function startNewSale() {
-    if (cart.length && !window.confirm('Iniciar uma nova venda e remover os itens atuais?')) return;
-    reset();
-    requestAnimationFrame(() => searchRef.current?.focus());
   }
   function cancelCurrentSale() {
     if (!cart.length) return;
@@ -463,13 +654,120 @@ export function PosPanel({
       window.dispatchEvent(new Event('erp:network-restored'));
     }
   }
+  function holdCurrentSale() {
+    if (!cart.length) return setError('Não há itens para aguardar');
+    const held: HeldSale = {
+      id: randomId(),
+      createdAt: new Date().toISOString(),
+      cart,
+      payments,
+      customerId,
+      sellerId,
+      surcharge,
+      freight,
+    };
+    const next = [held, ...heldSales];
+    setHeldSales(next);
+    localStorage.setItem(`erp:held-sales:${offlineScope}`, JSON.stringify(next));
+    reset();
+    setError('Venda colocada em espera. Use F4 para retomá-la.');
+  }
+  function restoreHeldSale(sale: HeldSale) {
+    setCart(sale.cart);
+    setPayments(sale.payments);
+    setCustomerId(sale.customerId);
+    setSellerId(sale.sellerId);
+    setSurcharge(sale.surcharge ?? 0);
+    setFreight(sale.freight ?? 0);
+    const next = heldSales.filter(({ id }) => id !== sale.id);
+    setHeldSales(next);
+    localStorage.setItem(`erp:held-sales:${offlineScope}`, JSON.stringify(next));
+    setHeldSalesOpen(false);
+  }
+  async function openCash(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const registerId = field(form, 'registerId') ?? cashRegisters[0]?.id;
+    if (!registerId) return setError('Cadastre um caixa antes de iniciar o PDV');
+    const amount = Number(field(form, 'openingAmount') ?? 0);
+    const notes = field(form, 'openingNotes') ?? '';
+    setBusy(true);
+    try {
+      await apiRequest('/cash/open', {
+        method: 'POST',
+        body: JSON.stringify({ registerId, openingAmount: amount }),
+      });
+      localStorage.setItem(`erp:cash-open:${offlineScope}`, 'open');
+      setCashOpening(false);
+      setCashPrintConfirm({ amount, notes });
+    } catch (reason) {
+      setError(message(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+  function printCashOpening(data: { amount: number; notes: string }) {
+    const target = window.open('', '_blank', 'popup,width=420,height=620');
+    if (!target) return;
+    target.document.write(
+      `<html><head><title>Abertura de caixa</title><style>@page{size:80mm auto;margin:2mm}body{width:72mm;font:12px monospace;text-align:center}.line{border-top:1px dashed;margin:8px 0}</style></head><body><h2>${escapeHtml(lookup.issuer.tradeName || lookup.issuer.legalName)}</h2><p>${escapeHtml(lookup.issuer.legalName)}</p><div class="line"></div><h3>COMPROVANTE DE ABERTURA DE CAIXA</h3><p>${new Date().toLocaleString('pt-BR')}</p><p>Valor de abertura: <b>${money(data.amount)}</b></p><p>${escapeHtml(data.notes)}</p><script>window.onload=()=>window.print()</script></body></html>`,
+    );
+    target.document.close();
+  }
+  function runHelpAction(action: string) {
+    setHelpOpen(false);
+    if (action === 'hold') holdCurrentSale();
+    else if (action === 'held') setHeldSalesOpen(true);
+    else if (action === 'customers') onNavigate?.('customers');
+    else if (action === 'cancel') cancelCurrentSale();
+    else if (action === 'remove') setCart((current) => current.slice(0, -1));
+    else if (action === 'settings') onOpenSettings?.();
+    else if (action === 'cash') onNavigate?.('cash');
+    else if (action === 'payment') setPaymentOpen(true);
+    else if (action === 'quick') formRef.current?.requestSubmit();
+    else if (action === 'customer') openCustomerPicker();
+    else if (action === 'notes') setNotesOpen(true);
+    else if (action === 'products') searchRef.current?.focus();
+    else if (action === 'presales') onNavigate?.('pre-sales');
+    else if (action === 'operations') onNavigate?.('pos-operations');
+    else if (action === 'tape') onNavigate?.('cash-tape');
+    else if (action === 'returns') onNavigate?.('returns');
+    else if (action === 'loyalty') onNavigate?.('loyalty');
+  }
+  function applyAdjustment(kind: 'discount' | 'surcharge' | 'freight') {
+    if (!cart.length) return;
+    const label = kind === 'discount' ? 'desconto' : kind === 'surcharge' ? 'acréscimo' : 'frete';
+    const value = Number(
+      window.prompt(`Informe o valor do ${label}`, '0,00')?.replace(',', '.') ?? 0,
+    );
+    if (!Number.isFinite(value) || value < 0) return setError('Informe um valor válido');
+    if (kind === 'surcharge') setSurcharge(value);
+    else if (kind === 'freight') setFreight(value);
+    else if (!canDiscount) setError('Operador sem permissão para aplicar desconto');
+    else
+      setCart((current) =>
+        current.map((item, index) =>
+          index === 0
+            ? { ...item, discount: Math.min(value, item.quantity * item.unitPrice) }
+            : item,
+        ),
+      );
+  }
+  function openCustomerPicker() {
+    setCustomerPickerOpen(true);
+    requestAnimationFrame(() => customerRef.current?.focus());
+  }
   return (
     <section className="pos-screen">
       <header className="pos-header">
-        <div>
-          <span className="eyebrow">PONTO DE VENDA</span>
-          <h1>Venda rápida</h1>
+        <div className="pos-brand">
+          <span className="pos-brand-mark">EH</span>
+          <span>
+            <strong>ERP Híbrido</strong>
+            <small>Frente de caixa</small>
+          </span>
         </div>
+        <h1>{cart.length ? 'Venda em andamento' : 'Liberado para uma nova venda'}</h1>
         <div className="pos-header-tools">
           <div className={`pos-connectivity ${online && !forcedOffline ? 'online' : 'offline'}`}>
             <span>{online && !forcedOffline ? '● Online' : '● Offline'}</span>
@@ -497,37 +795,21 @@ export function PosPanel({
               Trabalhar offline
             </button>
           </div>
+          <button
+            type="button"
+            className="pos-help-button"
+            onClick={() => setHelpOpen(true)}
+            aria-label="Ajuda e atalhos (F1)"
+          >
+            ?
+          </button>
+          {onExit && (
+            <button type="button" className="pos-exit-button" onClick={onExit}>
+              Sair
+            </button>
+          )}
         </div>
       </header>
-      <nav className="pos-actionbar" aria-label="Ações rápidas do PDV">
-        <button type="button" onClick={startNewSale}>
-          <span className="pos-action-icon">＋</span>
-          <strong>Nova venda</strong>
-          <kbd>F1</kbd>
-        </button>
-        <button type="button" onClick={() => searchRef.current?.focus()}>
-          <span className="pos-action-icon">⌕</span>
-          <strong>Buscar produto</strong>
-          <kbd>F2</kbd>
-        </button>
-        <button type="button" disabled={!cart.length} onClick={() => paymentRef.current?.focus()}>
-          <span className="pos-action-icon">$</span>
-          <strong>Pagamento</strong>
-          <kbd>F4</kbd>
-        </button>
-        <button type="button" disabled={!cart.length} onClick={cancelCurrentSale}>
-          <span className="pos-action-icon">×</span>
-          <strong>Cancelar venda</strong>
-          <kbd>Esc</kbd>
-        </button>
-        {onOpenSettings && (
-          <button type="button" onClick={onOpenSettings}>
-            <span className="pos-action-icon">⚙</span>
-            <strong>Configurar PDV</strong>
-            <kbd>F10</kbd>
-          </button>
-        )}
-      </nav>
       {error && (
         <div className="error" role="alert">
           {error}
@@ -595,9 +877,328 @@ export function PosPanel({
           </section>
         </div>
       )}
+      {helpOpen && (
+        <div className="modal-backdrop pos-modal-layer" role="presentation">
+          <section
+            className="pos-help-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-help-title"
+          >
+            <header>
+              <div>
+                <span className="eyebrow">ATALHOS DO OPERADOR</span>
+                <h2 id="pos-help-title">Menu de funções</h2>
+              </div>
+              <button type="button" className="quiet" onClick={() => setHelpOpen(false)}>
+                Fechar
+              </button>
+            </header>
+            <div className="pos-help-head">
+              <span>Descrição</span>
+              <span>Atalho</span>
+            </div>
+            <div className="pos-help-list">
+              {POS_HELP_ACTIONS.map((item) => (
+                <button type="button" key={item.label} onClick={() => runHelpAction(item.action)}>
+                  <strong>{item.label}</strong>
+                  <kbd>{item.shortcut}</kbd>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+      {heldSalesOpen && (
+        <div className="modal-backdrop pos-modal-layer" role="presentation">
+          <section
+            className="pos-held-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="held-title"
+          >
+            <header>
+              <div>
+                <span className="eyebrow">F4 · VENDAS AGUARDANDO</span>
+                <h2 id="held-title">Retomar venda</h2>
+              </div>
+              <button type="button" className="quiet" onClick={() => setHeldSalesOpen(false)}>
+                Fechar
+              </button>
+            </header>
+            {heldSales.length === 0 ? (
+              <div className="pos-modal-empty">Nenhuma venda está aguardando.</div>
+            ) : (
+              heldSales.map((sale) => (
+                <button
+                  type="button"
+                  className="pos-held-sale"
+                  key={sale.id}
+                  onClick={() => restoreHeldSale(sale)}
+                >
+                  <span>
+                    <strong>{new Date(sale.createdAt).toLocaleString('pt-BR')}</strong>
+                    <small>{sale.cart.length} item(ns)</small>
+                  </span>
+                  <b>
+                    {money(
+                      sale.cart.reduce(
+                        (sum, item) => sum + item.quantity * item.unitPrice - item.discount,
+                        0,
+                      ),
+                    )}
+                  </b>
+                </button>
+              ))
+            )}
+          </section>
+        </div>
+      )}
+      {customerPickerOpen && (
+        <div className="modal-backdrop pos-modal-layer" role="presentation">
+          <section
+            className="pos-party-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="customer-picker-title"
+          >
+            <header>
+              <div>
+                <span className="eyebrow">F2 · IDENTIFICAÇÃO</span>
+                <h2 id="customer-picker-title">Identificar cliente</h2>
+              </div>
+              <button type="button" className="quiet" onClick={() => setCustomerPickerOpen(false)}>
+                Fechar
+              </button>
+            </header>
+            <input
+              ref={customerRef}
+              value={customerQuery}
+              onChange={(event) => setCustomerQuery(event.target.value)}
+              placeholder="Nome, CPF, CNPJ ou telefone"
+              autoFocus
+            />
+            <div className="pos-party-list">
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerId('');
+                  setCustomerPickerOpen(false);
+                }}
+              >
+                <span>
+                  <strong>Consumidor não identificado</strong>
+                  <small>Venda sem identificação</small>
+                </span>
+                <b>Selecionar</b>
+              </button>
+              {lookup.customers
+                .filter((customer) =>
+                  customer.name.toLowerCase().includes(customerQuery.trim().toLowerCase()),
+                )
+                .map((customer) => (
+                  <button
+                    type="button"
+                    key={customer.id}
+                    onClick={() => {
+                      setCustomerId(customer.id);
+                      setCustomerPickerOpen(false);
+                    }}
+                  >
+                    <span>
+                      <strong>{customer.name}</strong>
+                      <small>Cliente cadastrado</small>
+                    </span>
+                    <b>Selecionar</b>
+                  </button>
+                ))}
+            </div>
+            <footer>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => {
+                  setCustomerPickerOpen(false);
+                  onNavigate?.('customers');
+                }}
+              >
+                Cadastrar novo cliente
+              </button>
+              {customerId && canReadCredit && (
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => {
+                    setCustomerPickerOpen(false);
+                    setStatementOpen(true);
+                  }}
+                >
+                  Extrato do cliente
+                </button>
+              )}
+            </footer>
+          </section>
+        </div>
+      )}
+      {sellerPickerOpen && (
+        <div className="modal-backdrop pos-modal-layer" role="presentation">
+          <section
+            className="pos-party-modal pos-seller-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="seller-picker-title"
+          >
+            <header>
+              <div>
+                <span className="eyebrow">VENDEDOR OBRIGATÓRIO</span>
+                <h2 id="seller-picker-title">Identificar vendedor</h2>
+              </div>
+              <button type="button" className="quiet" onClick={() => setSellerPickerOpen(false)}>
+                Fechar
+              </button>
+            </header>
+            <div className="pos-party-list">
+              {lookup.sellers.map((seller) => (
+                <button
+                  type="button"
+                  key={seller.id}
+                  onClick={() => {
+                    setSellerId(seller.id);
+                    setSellerPickerOpen(false);
+                    searchRef.current?.focus();
+                  }}
+                >
+                  <span>
+                    <strong>{seller.name}</strong>
+                    <small>Vendedor disponível</small>
+                  </span>
+                  <b>Selecionar</b>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+      {notesOpen && (
+        <div className="modal-backdrop pos-modal-layer" role="presentation">
+          <section
+            className="pos-party-modal pos-notes-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notes-title"
+          >
+            <header>
+              <div>
+                <span className="eyebrow">F12 · VENDA ATUAL</span>
+                <h2 id="notes-title">Observações da venda</h2>
+              </div>
+              <button type="button" className="quiet" onClick={() => setNotesOpen(false)}>
+                Fechar
+              </button>
+            </header>
+            <textarea
+              value={saleNotes}
+              onChange={(event) => setSaleNotes(event.target.value)}
+              rows={7}
+              autoFocus
+              placeholder="Digite uma observação para esta venda"
+            />
+            <footer>
+              <button type="button" className="primary" onClick={() => setNotesOpen(false)}>
+                Salvar observação
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {cashOpening && (
+        <div className="modal-backdrop pos-modal-layer pos-cash-backdrop" role="presentation">
+          <form
+            ref={cashFormRef}
+            className="pos-cash-modal"
+            onSubmit={(event) => void openCash(event)}
+          >
+            <header>
+              <div>
+                <span className="eyebrow">INÍCIO DO TURNO</span>
+                <h2>Abertura de caixa</h2>
+              </div>
+            </header>
+            {cashRegisters.length > 1 && (
+              <label>
+                Caixa
+                <select name="registerId" required>
+                  {cashRegisters.map((register) => (
+                    <option key={register.id} value={register.id}>
+                      {register.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label>
+              Valor de abertura
+              <input
+                name="openingAmount"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue="0.00"
+                autoFocus
+              />
+            </label>
+            <label>
+              Observação
+              <textarea name="openingNotes" rows={4} />
+            </label>
+            <footer>
+              <button type="button" className="quiet" onClick={onExit}>
+                Sair (ESC)
+              </button>
+              <button className="primary" disabled={busy}>
+                {busy ? 'Abrindo…' : 'Abrir caixa (F5)'}
+              </button>
+            </footer>
+          </form>
+        </div>
+      )}
+      {cashPrintConfirm && (
+        <div className="modal-backdrop pos-modal-layer pos-confirm-backdrop" role="presentation">
+          <section
+            className="pos-confirm-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="print-cash-title"
+          >
+            <span className="pos-info-icon">i</span>
+            <div>
+              <h3 id="print-cash-title">Comprovante de abertura</h3>
+              <p>Deseja imprimir o comprovante de abertura de caixa?</p>
+              <footer>
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => {
+                    printCashOpening(cashPrintConfirm);
+                    setCashPrintConfirm(null);
+                  }}
+                >
+                  Sim
+                </button>
+                <button type="button" className="quiet" onClick={() => setCashPrintConfirm(null)}>
+                  Não
+                </button>
+              </footer>
+            </div>
+          </section>
+        </div>
+      )}
       <form ref={formRef} className="pos-layout" onSubmit={(event) => void checkout(event)}>
         <main className="pos-catalog">
           <div className="pos-search">
+            <span className="pos-search-label">
+              Código, código de barras ou descrição <kbd>F3</kbd>
+            </span>
             <input
               ref={searchRef}
               autoFocus
@@ -615,6 +1216,16 @@ export function PosPanel({
               Adicionar
             </button>
           </div>
+          <div className="pos-entry-metrics">
+            <div>
+              <span>Quantidade</span>
+              <strong>{number(cart.at(-1)?.quantity ?? 1)}</strong>
+            </div>
+            <div>
+              <span>Preço unitário</span>
+              <strong>{money(cart.at(-1)?.unitPrice ?? 0)}</strong>
+            </div>
+          </div>
           {results.length > 0 && (
             <div className="pos-results">
               {results.map((product) => (
@@ -631,12 +1242,28 @@ export function PosPanel({
               ))}
             </div>
           )}
+        </main>
+        <aside className="pos-checkout">
+          <div className="pos-sale-context">
+            <span>
+              Vendedor:{' '}
+              <strong>
+                {lookup.sellers.find(({ id }) => id === sellerId)?.name ?? 'Sem vendedor'}
+              </strong>
+            </span>
+            {customerId && (
+              <span>
+                Cliente:{' '}
+                <strong>{lookup.customers.find(({ id }) => id === customerId)?.name}</strong>
+              </span>
+            )}
+          </div>
           <div className="pos-cart">
             <div className="pos-cart-head">
-              <span>Produto</span>
+              <span># Produto</span>
               <span>Qtd.</span>
               <span>Preço</span>
-              <span>Desconto</span>
+              <span>Desc.</span>
               <span>Total</span>
               <span />
             </div>
@@ -696,193 +1323,270 @@ export function PosPanel({
               </div>
             )}
           </div>
-        </main>
-        <aside className="pos-checkout">
-          <div className="pos-defaults" aria-label="Padrões desta venda">
-            <span>
-              Cliente{' '}
-              <strong>
-                {lookup.customers.find(({ id }) => id === customerId)?.name ??
-                  'Consumidor não identificado'}
-              </strong>
-            </span>
-          </div>
-          {lookup.settings?.sellerMode === 'per_sale' && (
-            <label className="pos-seller-select">
-              Vendedor desta venda
-              <select
-                value={sellerId}
-                required
-                onChange={(event) => setSellerId(event.target.value)}
-              >
-                <option value="">Selecione o vendedor</option>
-                {lookup.sellers.map((seller) => (
-                  <option key={seller.id} value={seller.id}>
-                    {seller.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {canReadCredit && (
-            <button
-              type="button"
-              className="quiet"
-              disabled={!customerId}
-              onClick={() => setStatementOpen(true)}
-            >
-              Extrato do cliente
-            </button>
-          )}
           <div className="pos-total">
             <span>Total</span>
             <strong>{money(total)}</strong>
             <small>{cart.length} produtos no carrinho</small>
           </div>
-          <h2>Pagamentos</h2>
-          {payments.map((payment, index) => (
-            <div className="pos-payment" key={payment.key}>
-              <select
-                aria-label="Forma de pagamento"
-                required
-                value={payment.paymentMethodId}
-                onChange={(event) =>
-                  setPayments((current) =>
-                    current.map((item) =>
-                      item.key === payment.key
-                        ? { ...item, paymentMethodId: event.target.value, installments: 1 }
-                        : item,
-                    ),
-                  )
-                }
-              >
-                <option value="">Forma</option>
-                {lookup.paymentMethods
-                  .filter(
-                    (method) =>
-                      method.id === payment.paymentMethodId ||
-                      !payments.some(({ paymentMethodId }) => paymentMethodId === method.id),
-                  )
-                  .map((method) => (
-                    <option key={method.id} value={method.id}>
-                      {method.name}
-                    </option>
-                  ))}
-              </select>
-              <input
-                ref={index === 0 ? paymentRef : undefined}
-                aria-label="Valor do pagamento"
-                required
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={payment.amount}
-                onChange={(event) =>
-                  setPayments((current) =>
-                    current.map((item) =>
-                      item.key === payment.key ? { ...item, amount: event.target.value } : item,
-                    ),
-                  )
-                }
-              />
-              {lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)?.type ===
-                'credit_card' && (
-                <select
-                  aria-label="Parcelas"
-                  value={payment.installments}
-                  onChange={(event) =>
-                    setPayments((current) =>
-                      current.map((item) =>
-                        item.key === payment.key
-                          ? { ...item, installments: Number(event.target.value) }
-                          : item,
-                      ),
-                    )
-                  }
-                >
-                  {Array.from(
-                    {
-                      length:
-                        lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)
-                          ?.maxInstallments ?? 1,
-                    },
-                    (_, installment) => installment + 1,
-                  ).map((installment) => (
-                    <option key={installment} value={installment}>
-                      {installment}x
-                    </option>
-                  ))}
-                </select>
-              )}
-              {payments.length > 1 && (
-                <button
-                  type="button"
-                  className="pos-remove"
-                  onClick={() =>
-                    setPayments((current) => current.filter(({ key }) => key !== payment.key))
-                  }
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ))}
-          {payments.map((payment) => {
-            const method = lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId);
-            if (!method?.cardConfiguration) return null;
-            const rate = paymentRate(method, payment.installments);
-            return (
-              <small className="pos-net-amount" key={`net-${payment.key}`}>
-                {method.cardConfiguration.operatorName}: líquido{' '}
-                {money(paymentNet(lookup, payment))} · taxa{' '}
-                {rate.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}% · D+
-                {method.cardConfiguration.settlementDays}
-              </small>
-            );
-          })}
           <button
             type="button"
-            className="quiet"
-            disabled={payments.length >= lookup.paymentMethods.length}
-            onClick={() =>
-              setPayments((current) => [
-                ...current,
-                {
-                  key: Math.max(...current.map(({ key }) => key)) + 1,
-                  paymentMethodId:
-                    lookup.paymentMethods.find(
-                      ({ id }) => !current.some(({ paymentMethodId }) => paymentMethodId === id),
-                    )?.id ?? '',
-                  amount: Math.max(0, total - paid).toFixed(2),
-                  installments: 1,
-                },
-              ])
-            }
+            className="pos-open-payment"
+            disabled={!cart.length}
+            onClick={() => setPaymentOpen(true)}
           >
-            + Forma de pagamento
+            Finalizar (F5)
           </button>
-          <div className={`pos-balance ${Math.abs(total - paid) < 0.009 ? 'ok' : ''}`}>
-            <span>Falta</span>
-            <strong>{money(Math.max(0, total - paid))}</strong>
-          </div>
-          {usesCredit && (
-            <label>
-              Vencimento do crediário
-              <input name="creditDueDate" type="date" required />
-            </label>
+          {paymentOpen && (
+            <div className="modal-backdrop pos-modal-layer" role="presentation">
+              <section
+                className="pos-payment-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="payment-title"
+              >
+                <header>
+                  <div>
+                    <span className="eyebrow">FINALIZAÇÃO DA VENDA</span>
+                    <h2 id="payment-title">Forma de recebimento</h2>
+                  </div>
+                  <button type="button" className="quiet" onClick={() => setPaymentOpen(false)}>
+                    Fechar
+                  </button>
+                </header>
+                <div className="pos-payment-summary">
+                  <span>
+                    Subtotal <strong>{money(total)}</strong>
+                  </span>
+                  <span>
+                    Saldo <strong>{money(Math.max(0, total - paid))}</strong>
+                  </span>
+                </div>
+                <div className="pos-payment-adjustments">
+                  <button type="button" onClick={() => applyAdjustment('discount')}>
+                    Desconto (-)
+                  </button>
+                  <button type="button" onClick={() => applyAdjustment('freight')}>
+                    Frete
+                  </button>
+                  <button type="button" onClick={() => applyAdjustment('surcharge')}>
+                    Acréscimo (+)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentOpen(false);
+                      onNavigate?.('returns');
+                    }}
+                  >
+                    Troca (Ctrl + T)
+                  </button>
+                </div>
+                <div className="pos-payment-method-index">
+                  {lookup.paymentMethods.map((method, index) => (
+                    <button
+                      type="button"
+                      key={method.id}
+                      className={payments[0]?.paymentMethodId === method.id ? 'selected' : ''}
+                      onClick={() =>
+                        setPayments((current) =>
+                          current.map((item, paymentIndex) =>
+                            paymentIndex === 0
+                              ? { ...item, paymentMethodId: method.id, installments: 1 }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <kbd>{index + 1}</kbd> {method.name}
+                    </button>
+                  ))}
+                </div>
+                <h2>Pagamentos selecionados</h2>
+                {payments.map((payment) => (
+                  <div className="pos-payment" key={payment.key}>
+                    <select
+                      aria-label="Forma de pagamento"
+                      required
+                      value={payment.paymentMethodId}
+                      onChange={(event) =>
+                        setPayments((current) =>
+                          current.map((item) =>
+                            item.key === payment.key
+                              ? { ...item, paymentMethodId: event.target.value, installments: 1 }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="">Forma</option>
+                      {lookup.paymentMethods
+                        .filter(
+                          (method) =>
+                            method.id === payment.paymentMethodId ||
+                            !payments.some(({ paymentMethodId }) => paymentMethodId === method.id),
+                        )
+                        .map((method) => (
+                          <option key={method.id} value={method.id}>
+                            {method.name}
+                          </option>
+                        ))}
+                    </select>
+                    <input
+                      aria-label="Valor do pagamento"
+                      required
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={payment.amount}
+                      onChange={(event) =>
+                        setPayments((current) =>
+                          current.map((item) =>
+                            item.key === payment.key
+                              ? { ...item, amount: event.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                    />
+                    {lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)
+                      ?.type === 'credit_card' && (
+                      <select
+                        aria-label="Parcelas"
+                        value={payment.installments}
+                        onChange={(event) =>
+                          setPayments((current) =>
+                            current.map((item) =>
+                              item.key === payment.key
+                                ? { ...item, installments: Number(event.target.value) }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        {Array.from(
+                          {
+                            length:
+                              lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)
+                                ?.maxInstallments ?? 1,
+                          },
+                          (_, installment) => installment + 1,
+                        ).map((installment) => (
+                          <option key={installment} value={installment}>
+                            {installment}x
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {payments.length > 1 && (
+                      <button
+                        type="button"
+                        className="pos-remove"
+                        onClick={() =>
+                          setPayments((current) => current.filter(({ key }) => key !== payment.key))
+                        }
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {payments.map((payment) => {
+                  const method = lookup.paymentMethods.find(
+                    ({ id }) => id === payment.paymentMethodId,
+                  );
+                  if (!method?.cardConfiguration) return null;
+                  const rate = paymentRate(method, payment.installments);
+                  return (
+                    <small className="pos-net-amount" key={`net-${payment.key}`}>
+                      {method.cardConfiguration.operatorName}: líquido{' '}
+                      {money(paymentNet(lookup, payment))} · taxa{' '}
+                      {rate.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}% · D+
+                      {method.cardConfiguration.settlementDays}
+                    </small>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="quiet"
+                  disabled={payments.length >= lookup.paymentMethods.length}
+                  onClick={() =>
+                    setPayments((current) => [
+                      ...current,
+                      {
+                        key: Math.max(...current.map(({ key }) => key)) + 1,
+                        paymentMethodId:
+                          lookup.paymentMethods.find(
+                            ({ id }) =>
+                              !current.some(({ paymentMethodId }) => paymentMethodId === id),
+                          )?.id ?? '',
+                        amount: Math.max(0, total - paid).toFixed(2),
+                        installments: 1,
+                      },
+                    ])
+                  }
+                >
+                  + Forma de pagamento
+                </button>
+                <div className={`pos-balance ${Math.abs(total - paid) < 0.009 ? 'ok' : ''}`}>
+                  <span>Falta</span>
+                  <strong>{money(Math.max(0, total - paid))}</strong>
+                </div>
+                {usesCredit && (
+                  <label>
+                    Vencimento do crediário
+                    <input
+                      name="creditDueDate"
+                      type="date"
+                      required
+                      defaultValue={futureDate(30)}
+                    />
+                  </label>
+                )}
+                <label>
+                  Observações
+                  <textarea name="notes" rows={2} />
+                </label>
+                <button
+                  className="pos-finish"
+                  disabled={busy || !cart.length || Math.abs(total - paid) > 0.009}
+                >
+                  {busy ? 'Finalizando…' : 'Confirmar venda (F8)'}
+                </button>
+              </section>
+            </div>
           )}
-          <label>
-            Observações
-            <textarea name="notes" rows={2} />
-          </label>
-          <button
-            className="pos-finish"
-            disabled={busy || !cart.length || Math.abs(total - paid) > 0.009}
-          >
-            {busy ? 'Finalizando…' : 'F9 · Finalizar venda'}
-          </button>
         </aside>
       </form>
+      <nav className="pos-bottom-actions" aria-label="Operações do caixa">
+        <button
+          type="button"
+          className="featured"
+          onClick={holdCurrentSale}
+          disabled={!cart.length}
+        >
+          Aguardar <kbd>F7</kbd>
+        </button>
+        <button type="button" onClick={cancelCurrentSale} disabled={!cart.length}>
+          Cancelar <kbd>F6</kbd>
+        </button>
+        <button
+          type="button"
+          className="featured"
+          onClick={() => formRef.current?.requestSubmit()}
+          disabled={!cart.length}
+        >
+          Finalizar rápido <kbd>F8</kbd>
+        </button>
+        <button type="button" onClick={() => setHeldSalesOpen(true)}>
+          Vendas <kbd>F4</kbd>
+        </button>
+        <button type="button" onClick={openCustomerPicker}>
+          Cliente <kbd>F2</kbd>
+        </button>
+        <button type="button" onClick={() => setNotesOpen(true)} disabled={!cart.length}>
+          Observações <kbd>F12</kbd>
+        </button>
+      </nav>
       {statementOpen && customerId && (
         <CustomerStatementPanel
           customerId={customerId}
@@ -925,6 +1629,11 @@ function number(value: string | number) {
 function date(value: string) {
   return new Date(value).toLocaleDateString('pt-BR');
 }
+function futureDate(days: number) {
+  const value = new Date();
+  value.setDate(value.getDate() + days);
+  return value.toISOString().slice(0, 10);
+}
 function isExpired(value: string | null) {
   if (!value) return false;
   const expiry = new Date(value);
@@ -938,4 +1647,42 @@ function randomId() {
 }
 function message(reason: unknown) {
   return reason instanceof Error ? reason.message : 'Falha no PDV';
+}
+
+const POS_HELP_ACTIONS = [
+  { label: 'Ajuda', shortcut: 'F1', action: 'help' },
+  { label: 'Aguardar', shortcut: 'F7', action: 'hold' },
+  { label: 'Aguardando', shortcut: 'F4', action: 'held' },
+  { label: 'Cadastrar cliente', shortcut: 'CTRL + END', action: 'customers' },
+  { label: 'Cancelar cupom', shortcut: 'F6', action: 'cancel' },
+  { label: 'Cancelar item', shortcut: 'DELETE', action: 'remove' },
+  { label: 'Configurar Certificado', shortcut: 'CTRL + ALT + =', action: 'settings' },
+  { label: 'Fechar caixa', shortcut: '=', action: 'cash' },
+  { label: 'Finalizar cupom', shortcut: 'F5', action: 'payment' },
+  { label: 'Finalizar rápido', shortcut: 'F8', action: 'quick' },
+  { label: 'Gaveta', shortcut: 'END', action: 'cash' },
+  { label: 'Configurações', shortcut: 'HOME', action: 'settings' },
+  { label: 'Inserir cliente', shortcut: 'ALT + C', action: 'customer' },
+  { label: 'Lançamentos de caixa', shortcut: 'CTRL + R', action: 'cash' },
+  { label: 'Observações', shortcut: 'F12', action: 'notes' },
+  { label: 'Pesquisar cliente', shortcut: 'F2', action: 'customer' },
+  { label: 'Pesquisar produtos', shortcut: 'F3', action: 'products' },
+  { label: 'Pré Vendas', shortcut: 'F9', action: 'presales' },
+  { label: 'Pré Vendas Locais', shortcut: 'CTRL + F9', action: 'presales' },
+  { label: 'Recebimento de conta', shortcut: 'F11', action: 'operations' },
+  { label: 'Reimpressão de carnê', shortcut: 'ALT + R', action: 'tape' },
+  { label: 'Sangria/suprimento', shortcut: 'INSERT', action: 'cash' },
+  { label: 'Sangria de pagamento', shortcut: 'ALT + INSERT', action: 'cash' },
+  { label: 'Troca/Devolução de produtos', shortcut: 'CTRL + T', action: 'returns' },
+  { label: 'GiftCard', shortcut: 'CTRL + G', action: 'loyalty' },
+  { label: 'GiftCards gerados', shortcut: 'CTRL + ALT + G', action: 'loyalty' },
+] as const;
+
+function escapeHtml(value: string) {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] ??
+      character,
+  );
 }

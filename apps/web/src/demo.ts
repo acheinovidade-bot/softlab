@@ -144,7 +144,7 @@ export function demoResponse(path: string, method = 'GET'): unknown {
         defaultCustomerId: null,
         defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
         defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
-        sellerMode: 'per_sale',
+        sellerMode: 'default',
       },
       customers: [
         { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
@@ -311,6 +311,16 @@ export function demoResponse(path: string, method = 'GET'): unknown {
       'Ana Martins',
       '219.80',
     );
+  if (path === '/cash/overview')
+    return {
+      registers: [
+        { id: '018f4f12-2222-7222-8222-000000000901', code: 'CX-01', name: 'Caixa principal' },
+      ],
+      sessions: [],
+      paymentMethods: [],
+    };
+  if (path === '/cash/open' && method !== 'GET')
+    return { id: '018f4f12-2222-7222-8222-000000000902', status: 'open' };
   if (path === '/cash/dashboard') {
     const daily = [
       980, 1240, 890, 1630, 1450, 1890, 2100, 1760, 2380, 2040, 2670, 2310, 2940, 3184,

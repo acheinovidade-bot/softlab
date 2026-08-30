@@ -280,15 +280,17 @@ export class PosService {
             },
           })
         : Promise.resolve(true),
-      this.prisma.employee.findFirst({
-        where: {
-          id: data.sellerId,
-          companyId: auth.companyId,
-          active: true,
-          deletedAt: null,
-          OR: [{ branchId: auth.branchId }, { branchId: null }],
-        },
-      }),
+      data.sellerId
+        ? this.prisma.employee.findFirst({
+            where: {
+              id: data.sellerId,
+              companyId: auth.companyId,
+              active: true,
+              deletedAt: null,
+              OR: [{ branchId: auth.branchId }, { branchId: null }],
+            },
+          })
+        : Promise.resolve(true),
       this.prisma.stockLocation.findFirst({
         where: { id: data.locationId, companyId: auth.companyId },
       }),
@@ -373,7 +375,8 @@ export class PosService {
         total: gross.sub(discount),
       };
     });
-    const total = lines.reduce((sum, line) => sum.add(line.total), new Prisma.Decimal(0));
+    const subtotal = lines.reduce((sum, line) => sum.add(line.total), new Prisma.Decimal(0));
+    const total = subtotal.add(data.surcharge).add(data.freight);
     const paid = data.payments.reduce(
       (sum, payment) => sum.add(payment.amount),
       new Prisma.Decimal(0),
@@ -439,12 +442,12 @@ export class PosService {
             number: orderNumber,
             origin,
             status: 'completed',
-            subtotal: total.add(
+            subtotal: subtotal.add(
               lines.reduce((sum, line) => sum.add(line.discount), new Prisma.Decimal(0)),
             ),
             discount: lines.reduce((sum, line) => sum.add(line.discount), new Prisma.Decimal(0)),
-            surcharge: 0,
-            freight: 0,
+            surcharge: data.surcharge,
+            freight: data.freight,
             total,
             notes: data.notes,
             createdAt: now,
