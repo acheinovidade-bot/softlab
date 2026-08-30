@@ -35,9 +35,9 @@ export function LoginPage({
     <main className="pos-login-layout">
       <header className="pos-login-header">
         <div className="pos-brand">
-          <span className="pos-brand-mark">EH</span>
+          <span className="pos-brand-mark">SL</span>
           <span>
-            <strong>ERP Híbrido</strong>
+            <strong>SoftLab Varejo</strong>
             <small>Tecnologia</small>
           </span>
         </div>
@@ -51,7 +51,7 @@ export function LoginPage({
       </div>
       <section className="pos-login-card" aria-labelledby="login-title">
         <div className="pos-login-logo">
-          <strong>EH</strong>
+          <strong>SL</strong>
           <span>
             sistema
             <br />

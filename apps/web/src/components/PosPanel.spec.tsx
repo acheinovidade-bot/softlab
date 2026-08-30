@@ -34,25 +34,51 @@ describe('PosPanel', () => {
     expect(
       screen.getByRole('heading', { name: 'Liberado para uma nova venda' }),
     ).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'F3' });
+    expect(screen.getByRole('dialog', { name: 'Localizar produto' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /CAFE-1.*Café especial/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cliente F2' }));
     expect(screen.getByRole('dialog', { name: 'Identificar cliente' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Consumidor não identificado.*Selecionar/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Consumidor não identificado.*Selecionar/ }),
+    );
     const search = await screen.findByPlaceholderText('Código, código de barras ou descrição');
+    fireEvent.change(search, { target: { value: '5' } });
+    fireEvent.keyDown(search, { key: '*' });
     fireEvent.change(search, { target: { value: '789100000001' } });
     fireEvent.keyDown(search, { key: 'Enter' });
     expect(await screen.findByText('Café especial')).toBeInTheDocument();
-    expect(screen.getAllByText(/18,90/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole('spinbutton', { name: 'Quantidade de Café especial' })).toHaveValue(5);
+    expect(screen.getAllByText(/94,50/).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole('button', { name: 'Finalizar (F5)' })).toBeEnabled();
     fireEvent.keyDown(window, { key: 'F1' });
     expect(screen.getByRole('dialog', { name: 'Menu de funções' })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.keyDown(window, { key: 'F5' });
     expect(screen.getByRole('dialog', { name: 'Forma de recebimento' })).toBeInTheDocument();
+    const received = screen.getByLabelText('Valor recebido');
+    expect(received).toHaveValue('94.50');
+    await waitFor(() => expect(received).toHaveFocus());
+    fireEvent.change(received, { target: { value: '100' } });
+    fireEvent.keyDown(received, { key: 'Enter' });
+    expect(screen.getByRole('button', { name: '1 Dinheiro' })).toHaveFocus();
+    expect(screen.getByText('R$ 5,50')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Trabalhar online' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(window, { key: 'Home' });
+    expect(screen.getByRole('dialog', { name: 'Configurações do PDV' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Balança checkout' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pré-venda desktop' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'S@T/MFe' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'TEF' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Impressão' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Trabalhar offline' }));
     expect(localStorage.getItem('erp:pos-operation-mode')).toBe('offline');
     await waitFor(() =>
@@ -62,7 +88,28 @@ describe('PosPanel', () => {
       ),
     );
   });
-  it('requires a valid lot and seller when configured per sale', async () => {
+  it('creates and identifies a customer from the F2 quick form', async () => {
+    vi.mocked(apiRequest).mockImplementation((path) => {
+      if (path === '/master/customers')
+        return Promise.resolve({ id: 'customer-new', legalName: 'João Silva' } as never);
+      return Promise.resolve({
+        customers: [],
+        sellers: [],
+        paymentMethods: [],
+        locations: [{ id: 'location-1', code: 'LOJA', name: 'Loja' }],
+        products: [],
+      } as never);
+    });
+    render(<PosPanel canDiscount={false} />);
+    fireEvent.keyDown(window, { key: 'F2' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Cadastrar novo cliente' }));
+    fireEvent.change(screen.getByLabelText('Nome'), { target: { value: 'João Silva' } });
+    fireEvent.change(screen.getByLabelText('Telefone'), { target: { value: '(85) 99999-0000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e identificar' }));
+    expect(await screen.findByText('João Silva')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Identificar cliente' })).not.toBeInTheDocument();
+  });
+  it('requires a valid lot without interrupting the sale to ask for a seller', async () => {
     vi.mocked(apiRequest).mockResolvedValue({
       settings: {
         defaultCustomerId: null,
@@ -103,11 +150,7 @@ describe('PosPanel', () => {
     fireEvent.keyDown(search, { key: 'Enter' });
     fireEvent.click(await screen.findByRole('button', { name: /Lote L-2099/ }));
     expect(screen.getByText(/Lote L-2099/)).toBeInTheDocument();
-    const sellerDialog = await screen.findByRole('dialog', { name: 'Identificar vendedor' });
-    expect(sellerDialog).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Marina Costa Vendedor disponível Selecionar' }),
-    );
     expect(screen.queryByRole('dialog', { name: 'Identificar vendedor' })).not.toBeInTheDocument();
+    expect(screen.getByText('Consumidor final')).toBeInTheDocument();
   });
 });

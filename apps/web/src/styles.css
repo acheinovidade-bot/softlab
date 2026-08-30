@@ -3198,6 +3198,55 @@ th {
   }
 }
 
+.pos-settings-dialog {
+  position: relative;
+  width: min(900px, calc(100vw - 32px));
+  min-height: min(550px, calc(100vh - 32px));
+  padding: 20px 26px;
+  border: 1px solid #a8adb6;
+  border-radius: 4px;
+  background: #fff;
+  color: #343b46;
+  box-shadow: 0 22px 70px rgb(15 23 42 / 24%);
+  display: flex;
+  flex-direction: column;
+}
+.pos-settings-close { position: absolute; top: 5px; right: 9px; border: 0; background: transparent; color: #111827; font-size: 25px; line-height: 1; cursor: pointer; }
+.pos-settings-dialog > nav { display: flex; gap: 0; padding-right: 18px; border-bottom: 1px solid #b7bdc7; overflow-x: hidden; }
+.pos-settings-dialog > nav button { flex: 1 1 auto; padding: 12px 7px 10px; border: 0; border-bottom: 3px solid transparent; background: #fff; color: #515b68; font-size: 13px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.pos-settings-dialog > nav button.active { border-bottom-color: #2563eb; background: #e7eef6; }
+.pos-settings-content { flex: 1; padding: 30px 10px 16px; }
+.pos-settings-grid { display: grid; align-content: start; gap: 18px 20px; }
+.pos-settings-grid.one-column { max-width: 610px; }
+.pos-settings-grid.two-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.pos-settings-grid.tef-grid { grid-template-columns: 190px 120px 240px minmax(150px, 1fr); }
+.pos-settings-grid label,
+.pos-settings-grid > div { display: grid; gap: 7px; color: #515b68; font-size: 13px; font-weight: 800; }
+.pos-settings-grid input,
+.pos-settings-grid select { min-height: 38px; padding: 7px 10px; border: 1px solid #c7ccd4; border-radius: 7px; background: #fff; color: #374151; font: inherit; }
+.pos-settings-grid label.check { display: inline-flex; width: fit-content; min-height: 24px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; white-space: nowrap; }
+.pos-settings-grid label.check input { flex: 0 0 16px; width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; }
+.pos-settings-grid .full { grid-column: 1 / -1; }
+.pos-settings-grid .inline-field,
+.pos-settings-grid .inline-fields { display: flex; align-items: end; gap: 10px; }
+.pos-settings-grid .inline-field input { flex: 1; }
+.pos-settings-grid .inline-field button,
+.pos-settings-grid .test-connection { min-height: 38px; padding: 8px 20px; border: 1px solid #c7ccd4; border-radius: 9px; background: #fff; color: #174a9c; font-weight: 900; }
+.pos-settings-grid .test-connection { max-width: 316px; background: #1557b0; color: #fff; }
+.pos-settings-grid small { font-weight: 500; font-style: italic; }
+.pos-settings-grid em { align-self: end; margin-top: 240px; color: #1453d1; text-align: right; font-size: 12px; font-weight: 800; }
+.pos-settings-notice { margin: 0 auto 8px; color: #166534; font-weight: 800; }
+.pos-settings-dialog > footer { display: flex; justify-content: center; gap: 110px; padding: 10px 0 14px; }
+.pos-settings-dialog > footer button { min-width: 120px; min-height: 42px; font-weight: 900; }
+@media (max-width: 760px) {
+  .pos-settings-dialog { min-height: calc(100vh - 16px); width: calc(100vw - 16px); padding: 16px; }
+  .pos-settings-grid.two-columns,
+  .pos-settings-grid.tef-grid { grid-template-columns: 1fr; }
+  .pos-settings-grid .full { grid-column: auto; }
+  .pos-settings-grid em { margin-top: 40px; }
+  .pos-settings-dialog > footer { gap: 24px; }
+}
+
 /* Mantém o PDV ocupando toda a janela, acima das regras gerais do shell. */
 .app-layout.pos-app-mode {
   display: block;
@@ -3373,6 +3422,82 @@ th {
 }
 .pos-party-list small {
   color: #777;
+}
+.pos-product-modal {
+  width: min(900px, 94vw);
+}
+.pos-product-list {
+  display: grid;
+  max-height: 58vh;
+  gap: 7px;
+  overflow-y: auto;
+}
+.pos-product-list > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  color: #444;
+  text-align: left;
+}
+.pos-product-list > button:hover,
+.pos-product-list > button:focus-visible {
+  border-color: #7b2182;
+  background: #f8f0f8;
+}
+.pos-product-list span {
+  display: grid;
+  gap: 3px;
+}
+.pos-product-list small {
+  color: #777;
+}
+.pos-quick-customer {
+  display: grid;
+  gap: 13px;
+  margin-top: 12px;
+}
+.pos-quick-customer > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.pos-quick-customer label {
+  display: grid;
+  gap: 5px;
+  color: #555;
+  font-weight: 700;
+}
+.pos-quick-customer label small {
+  color: #888;
+  font-weight: 400;
+}
+.pos-quick-customer input {
+  width: 100%;
+}
+.pos-quick-customer footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.app-layout.pos-app-mode .pos-payment-summary label {
+  display: grid;
+  grid-template-columns: 1fr 200px;
+  align-items: center;
+  color: #666;
+  font-size: 20px;
+  font-weight: 800;
+}
+.app-layout.pos-app-mode .pos-payment-summary label input {
+  min-height: 54px;
+  color: #68186e;
+  font-size: 28px;
+  font-weight: 800;
+  text-align: right;
 }
 .food-payment {
   display: grid;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PosCheckoutResult, PosProduct } from '@erp/contracts';
 import { apiRequest } from '../api';
 import { CustomerStatementPanel } from './CustomerStatementPanel';
+import { PosSettingsDialog } from './PosSettingsDialog';
 import { SaleCompletionDialog, type SaleReceipt } from './SaleCompletionDialog';
 import {
   cachePosLookups,
@@ -94,6 +95,10 @@ export function PosPanel({
   });
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
+  const [entryQuantity, setEntryQuantity] = useState(1);
+  const [productListOpen, setProductListOpen] = useState(false);
+  const [productListQuery, setProductListQuery] = useState('');
+  const [localSettingsOpen, setLocalSettingsOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentDraft[]>([
     { key: 1, paymentMethodId: '', amount: '0.00', installments: 1 },
   ]);
@@ -112,6 +117,9 @@ export function PosPanel({
   const [sellerPickerOpen, setSellerPickerOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [saleNotes, setSaleNotes] = useState('');
+  const [customerCreateOpen, setCustomerCreateOpen] = useState(false);
+  const [customerCreating, setCustomerCreating] = useState(false);
+  const [receivedAmount, setReceivedAmount] = useState('0.00');
   const [customerQuery, setCustomerQuery] = useState('');
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [surcharge, setSurcharge] = useState(0);
@@ -131,6 +139,9 @@ export function PosPanel({
   const [pendingOffline, setPendingOffline] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const productListRef = useRef<HTMLInputElement>(null);
+  const receivedAmountRef = useRef<HTMLInputElement>(null);
+  const firstPaymentMethodRef = useRef<HTMLButtonElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const customerRef = useRef<HTMLInputElement>(null);
   const cashFormRef = useRef<HTMLFormElement>(null);
@@ -141,6 +152,7 @@ export function PosPanel({
   );
   const total = itemsTotal + surcharge + freight;
   const paid = payments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const received = Number(receivedAmount.replace(',', '.') || 0);
   const results = search.trim()
     ? lookup.products
         .filter((item) =>
@@ -282,6 +294,11 @@ export function PosPanel({
       setPayments((current) => current.map((item) => ({ ...item, amount: total.toFixed(2) })));
   }, [total]);
   useEffect(() => {
+    if (!paymentOpen) return;
+    receivedAmountRef.current?.focus();
+    receivedAmountRef.current?.select();
+  }, [paymentOpen]);
+  useEffect(() => {
     function shortcut(event: KeyboardEvent) {
       if (event.key === 'F1') {
         event.preventDefault();
@@ -289,12 +306,14 @@ export function PosPanel({
       }
       if (event.key === 'F2') {
         event.preventDefault();
+        setCustomerCreateOpen(false);
         setCustomerPickerOpen(true);
         requestAnimationFrame(() => customerRef.current?.focus());
       }
       if (event.key === 'F3') {
         event.preventDefault();
-        searchRef.current?.focus();
+        setProductListOpen(true);
+        requestAnimationFrame(() => productListRef.current?.focus());
       }
       if (event.key === 'F4') {
         event.preventDefault();
@@ -303,8 +322,13 @@ export function PosPanel({
       if (event.key === 'F5') {
         event.preventDefault();
         if (helpOpen) setHelpOpen(false);
+        if (productListOpen) setProductListOpen(false);
         if (cashOpening) cashFormRef.current?.requestSubmit();
-        else if (cart.length) setPaymentOpen(true);
+        else if (cart.length) {
+          setReceivedAmount(total.toFixed(2));
+          setPaymentOpen(true);
+          requestAnimationFrame(() => receivedAmountRef.current?.select());
+        }
       }
       if (event.key === 'F6') {
         event.preventDefault();
@@ -316,7 +340,9 @@ export function PosPanel({
       }
       if (event.key === 'F8') {
         event.preventDefault();
-        if (!receipt) formRef.current?.requestSubmit();
+        if (paymentOpen && received + 0.009 < total)
+          setError('O valor recebido é menor que o total da venda');
+        else if (!receipt) formRef.current?.requestSubmit();
       }
       if (event.key === 'F9') {
         event.preventDefault();
@@ -330,9 +356,9 @@ export function PosPanel({
         event.preventDefault();
         onOpenSettings();
       }
-      if (event.key === 'Home' && onOpenSettings) {
+      if (event.key === 'Home') {
         event.preventDefault();
-        onOpenSettings();
+        setLocalSettingsOpen(true);
       }
       if (event.ctrlKey && event.key === 'End') {
         event.preventDefault();
@@ -356,7 +382,8 @@ export function PosPanel({
       }
       if (event.altKey && event.key.toLowerCase() === 'c') {
         event.preventDefault();
-        customerRef.current?.focus();
+        setCustomerPickerOpen(true);
+        requestAnimationFrame(() => customerRef.current?.focus());
       }
       if (event.ctrlKey && event.key === 'F9') {
         event.preventDefault();
@@ -393,7 +420,9 @@ export function PosPanel({
           heldSalesOpen ||
           customerPickerOpen ||
           sellerPickerOpen ||
-          notesOpen)
+          notesOpen ||
+          productListOpen ||
+          localSettingsOpen)
       ) {
         setHelpOpen(false);
         setPaymentOpen(false);
@@ -401,8 +430,14 @@ export function PosPanel({
         setCustomerPickerOpen(false);
         setSellerPickerOpen(false);
         setNotesOpen(false);
+        setProductListOpen(false);
+        setLocalSettingsOpen(false);
       } else if (event.key === 'Escape' && cashOpening) onExit?.();
-      if (paymentOpen && /^[1-9]$/.test(event.key)) {
+      if (
+        paymentOpen &&
+        event.target !== receivedAmountRef.current &&
+        /^[1-9]$/.test(event.key)
+      ) {
         const method = lookup.paymentMethods[Number(event.key) - 1];
         if (method) {
           event.preventDefault();
@@ -428,11 +463,16 @@ export function PosPanel({
     customerPickerOpen,
     sellerPickerOpen,
     notesOpen,
+    productListOpen,
+    localSettingsOpen,
     cashOpening,
     lookup.paymentMethods,
+    total,
+    received,
   ]);
 
   function add(product: PosProduct) {
+    setProductListOpen(false);
     if (product.salePrice === null && !product.openPrice)
       return setError('Produto sem preço vigente');
     if (product.selectLotAtPos) {
@@ -450,13 +490,13 @@ export function PosPanel({
       const existing = current.find(({ id }) => id === product.id);
       return existing
         ? current.map((item) =>
-            item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
+            item.id === product.id ? { ...item, quantity: item.quantity + entryQuantity } : item,
           )
         : [
             ...current,
             {
               ...product,
-              quantity: 1,
+              quantity: entryQuantity,
               unitPrice: Number(product.salePrice ?? 0),
               discount: 0,
               lotId: lot?.id ?? null,
@@ -466,9 +506,9 @@ export function PosPanel({
           ];
     });
     setSearch('');
+    setEntryQuantity(1);
     setError('');
     setLotSelection(null);
-    if (lookup.settings?.sellerMode === 'per_sale' && !sellerId) setSellerPickerOpen(true);
     searchRef.current?.focus();
   }
   function addFromSearch() {
@@ -487,10 +527,6 @@ export function PosPanel({
   async function checkout(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!cart.length) return setError('Adicione ao menos um produto');
-    if (lookup.settings?.sellerMode === 'per_sale' && !sellerId) {
-      setSellerPickerOpen(true);
-      return setError('Identifique o vendedor para concluir esta venda');
-    }
     if (!locationId) return setError('Configure a movimentação interna do PDV');
     if (Math.abs(paid - total) > 0.009)
       return setError('Os pagamentos devem fechar exatamente o total da venda');
@@ -721,14 +757,16 @@ export function PosPanel({
     else if (action === 'customers') onNavigate?.('customers');
     else if (action === 'cancel') cancelCurrentSale();
     else if (action === 'remove') setCart((current) => current.slice(0, -1));
-    else if (action === 'settings') onOpenSettings?.();
+    else if (action === 'settings') setLocalSettingsOpen(true);
     else if (action === 'cash') onNavigate?.('cash');
     else if (action === 'payment') setPaymentOpen(true);
     else if (action === 'quick') formRef.current?.requestSubmit();
     else if (action === 'customer') openCustomerPicker();
     else if (action === 'notes') setNotesOpen(true);
-    else if (action === 'products') searchRef.current?.focus();
-    else if (action === 'presales') onNavigate?.('pre-sales');
+    else if (action === 'products') {
+      setProductListOpen(true);
+      requestAnimationFrame(() => productListRef.current?.focus());
+    } else if (action === 'presales') onNavigate?.('pre-sales');
     else if (action === 'operations') onNavigate?.('pos-operations');
     else if (action === 'tape') onNavigate?.('cash-tape');
     else if (action === 'returns') onNavigate?.('returns');
@@ -754,16 +792,56 @@ export function PosPanel({
       );
   }
   function openCustomerPicker() {
+    setCustomerCreateOpen(false);
     setCustomerPickerOpen(true);
     requestAnimationFrame(() => customerRef.current?.focus());
+  }
+  async function createQuickCustomer(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const legalName = field(form, 'legalName') ?? '';
+    const phone = field(form, 'phone') ?? '';
+    const taxId = (field(form, 'taxId') ?? '').replace(/\D/g, '');
+    const email = field(form, 'email') ?? '';
+    const whatsapp = field(form, 'whatsapp') ?? '';
+    setCustomerCreating(true);
+    setError('');
+    try {
+      const customer = await apiRequest<{ id: string; legalName: string }>('/master/customers', {
+        method: 'POST',
+        body: JSON.stringify({
+          personType: taxId.length === 14 ? 'J' : 'F',
+          taxId: taxId || null,
+          legalName,
+          tradeName: null,
+          phone,
+          whatsapp: whatsapp || null,
+          email: email || null,
+          creditLimit: 0,
+          addresses: [],
+        }),
+      });
+      setLookup((current) => ({
+        ...current,
+        customers: [...current.customers, { id: customer.id, name: customer.legalName }],
+      }));
+      setCustomerId(customer.id);
+      setCustomerCreateOpen(false);
+      setCustomerPickerOpen(false);
+      setCustomerQuery('');
+    } catch (reason) {
+      setError(message(reason));
+    } finally {
+      setCustomerCreating(false);
+    }
   }
   return (
     <section className="pos-screen">
       <header className="pos-header">
         <div className="pos-brand">
-          <span className="pos-brand-mark">EH</span>
+          <span className="pos-brand-mark">SL</span>
           <span>
-            <strong>ERP Híbrido</strong>
+            <strong>SoftLab Varejo</strong>
             <small>Frente de caixa</small>
           </span>
         </div>
@@ -909,6 +987,66 @@ export function PosPanel({
           </section>
         </div>
       )}
+      {productListOpen && (
+        <div className="modal-backdrop pos-modal-layer" role="presentation">
+          <section
+            className="pos-party-modal pos-product-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-list-title"
+          >
+            <header>
+              <div>
+                <span className="eyebrow">F3 · CATÁLOGO</span>
+                <h2 id="product-list-title">Localizar produto</h2>
+              </div>
+              <button type="button" className="quiet" onClick={() => setProductListOpen(false)}>
+                Fechar
+              </button>
+            </header>
+            <input
+              ref={productListRef}
+              value={productListQuery}
+              onChange={(event) => setProductListQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                const query = productListQuery.trim().toLowerCase();
+                const product = lookup.products.find((item) =>
+                  [item.code, item.barcode, item.description].some((value) =>
+                    value?.toLowerCase().includes(query),
+                  ),
+                );
+                if (product) add(product);
+              }}
+              placeholder="Código, código de barras ou descrição"
+              autoFocus
+            />
+            <div className="pos-product-list">
+              {lookup.products
+                .filter((product) =>
+                  [product.code, product.barcode, product.description].some((value) =>
+                    value?.toLowerCase().includes(productListQuery.trim().toLowerCase()),
+                  ),
+                )
+                .map((product) => (
+                  <button type="button" key={product.id} onClick={() => add(product)}>
+                    <span>
+                      <strong>
+                        {product.code} · {product.description}
+                      </strong>
+                      <small>
+                        {product.barcode || 'Sem código de barras'} · Disponível{' '}
+                        {number(product.availableQuantity)}
+                      </small>
+                    </span>
+                    <b>{product.salePrice === null ? 'Preço aberto' : money(product.salePrice)}</b>
+                  </button>
+                ))}
+            </div>
+          </section>
+        </div>
+      )}
       {heldSalesOpen && (
         <div className="modal-backdrop pos-modal-layer" role="presentation">
           <section
@@ -971,72 +1109,113 @@ export function PosPanel({
                 Fechar
               </button>
             </header>
-            <input
-              ref={customerRef}
-              value={customerQuery}
-              onChange={(event) => setCustomerQuery(event.target.value)}
-              placeholder="Nome, CPF, CNPJ ou telefone"
-              autoFocus
-            />
-            <div className="pos-party-list">
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomerId('');
-                  setCustomerPickerOpen(false);
-                }}
+            {customerCreateOpen ? (
+              <form
+                className="pos-quick-customer"
+                onSubmit={(event) => void createQuickCustomer(event)}
               >
-                <span>
-                  <strong>Consumidor não identificado</strong>
-                  <small>Venda sem identificação</small>
-                </span>
-                <b>Selecionar</b>
-              </button>
-              {lookup.customers
-                .filter((customer) =>
-                  customer.name.toLowerCase().includes(customerQuery.trim().toLowerCase()),
-                )
-                .map((customer) => (
+                <label>
+                  Nome
+                  <input name="legalName" required minLength={2} autoFocus />
+                </label>
+                <label>
+                  Telefone
+                  <input name="phone" required inputMode="tel" placeholder="(00) 00000-0000" />
+                </label>
+                <div>
+                  <label>
+                    CPF ou CNPJ <small>Opcional</small>
+                    <input name="taxId" inputMode="numeric" />
+                  </label>
+                  <label>
+                    E-mail <small>Opcional</small>
+                    <input name="email" type="email" />
+                  </label>
+                </div>
+                <label>
+                  WhatsApp <small>Opcional</small>
+                  <input name="whatsapp" inputMode="tel" />
+                </label>
+                <footer>
                   <button
                     type="button"
-                    key={customer.id}
+                    className="quiet"
+                    onClick={() => setCustomerCreateOpen(false)}
+                  >
+                    Voltar para pesquisa
+                  </button>
+                  <button className="primary" disabled={customerCreating}>
+                    {customerCreating ? 'Salvando…' : 'Salvar e identificar'}
+                  </button>
+                </footer>
+              </form>
+            ) : (
+              <>
+                <input
+                  ref={customerRef}
+                  value={customerQuery}
+                  onChange={(event) => setCustomerQuery(event.target.value)}
+                  placeholder="Nome, CPF, CNPJ ou telefone"
+                  autoFocus
+                />
+                <div className="pos-party-list">
+                  <button
+                    type="button"
                     onClick={() => {
-                      setCustomerId(customer.id);
+                      setCustomerId('');
                       setCustomerPickerOpen(false);
                     }}
                   >
                     <span>
-                      <strong>{customer.name}</strong>
-                      <small>Cliente cadastrado</small>
+                      <strong>Consumidor não identificado</strong>
+                      <small>Venda sem identificação</small>
                     </span>
                     <b>Selecionar</b>
                   </button>
-                ))}
-            </div>
-            <footer>
-              <button
-                type="button"
-                className="quiet"
-                onClick={() => {
-                  setCustomerPickerOpen(false);
-                  onNavigate?.('customers');
-                }}
-              >
-                Cadastrar novo cliente
-              </button>
-              {customerId && canReadCredit && (
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => {
-                    setCustomerPickerOpen(false);
-                    setStatementOpen(true);
-                  }}
-                >
-                  Extrato do cliente
-                </button>
-              )}
-            </footer>
+                  {lookup.customers
+                    .filter((customer) =>
+                      customer.name.toLowerCase().includes(customerQuery.trim().toLowerCase()),
+                    )
+                    .map((customer) => (
+                      <button
+                        type="button"
+                        key={customer.id}
+                        onClick={() => {
+                          setCustomerId(customer.id);
+                          setCustomerPickerOpen(false);
+                        }}
+                      >
+                        <span>
+                          <strong>{customer.name}</strong>
+                          <small>Cliente cadastrado</small>
+                        </span>
+                        <b>Selecionar</b>
+                      </button>
+                    ))}
+                </div>
+                <footer>
+                  <button
+                    type="button"
+                    className="quiet"
+                    onClick={() => setCustomerCreateOpen(true)}
+                  >
+                    Cadastrar novo cliente
+                  </button>
+                  {customerId && canReadCredit && (
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => {
+                        setCustomerPickerOpen(false);
+                        setStatementOpen(true);
+                      }}
+                    >
+                      Extrato do cliente
+                    </button>
+                  )}
+                </footer>
+              </>
+            )}
           </section>
         </div>
       )}
@@ -1203,8 +1382,27 @@ export function PosPanel({
               ref={searchRef}
               autoFocus
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSearch(value);
+                const normalized = value.trim().toLowerCase();
+                const exact = lookup.products.find(
+                  (product) =>
+                    product.code.toLowerCase() === normalized || product.barcode === value.trim(),
+                );
+                if (exact) add(exact);
+              }}
               onKeyDown={(event) => {
+                if (event.key === '*') {
+                  event.preventDefault();
+                  const quantity = Number(search.replace(',', '.'));
+                  if (Number.isFinite(quantity) && quantity > 0) {
+                    setEntryQuantity(quantity);
+                    setSearch('');
+                    setError(`Quantidade preparada: ${number(quantity)}`);
+                  } else setError('Digite uma quantidade válida antes de pressionar *');
+                  return;
+                }
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   addFromSearch();
@@ -1212,44 +1410,23 @@ export function PosPanel({
               }}
               placeholder="Código, código de barras ou descrição"
             />
-            <button type="button" className="primary" onClick={addFromSearch}>
-              Adicionar
-            </button>
           </div>
           <div className="pos-entry-metrics">
             <div>
               <span>Quantidade</span>
-              <strong>{number(cart.at(-1)?.quantity ?? 1)}</strong>
+              <strong>{number(entryQuantity)}</strong>
             </div>
             <div>
               <span>Preço unitário</span>
               <strong>{money(cart.at(-1)?.unitPrice ?? 0)}</strong>
             </div>
           </div>
-          {results.length > 0 && (
-            <div className="pos-results">
-              {results.map((product) => (
-                <button type="button" key={product.id} onClick={() => add(product)}>
-                  <span>
-                    <strong>{product.code}</strong>
-                    {product.description}
-                  </span>
-                  <span>
-                    {product.salePrice === null ? 'Preço aberto' : money(product.salePrice)}
-                    <small>Disponível {number(product.availableQuantity)}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
         </main>
         <aside className="pos-checkout">
           <div className="pos-sale-context">
             <span>
               Vendedor:{' '}
-              <strong>
-                {lookup.sellers.find(({ id }) => id === sellerId)?.name ?? 'Sem vendedor'}
-              </strong>
+              <strong>Consumidor final</strong>
             </span>
             {customerId && (
               <span>
@@ -1332,7 +1509,11 @@ export function PosPanel({
             type="button"
             className="pos-open-payment"
             disabled={!cart.length}
-            onClick={() => setPaymentOpen(true)}
+            onClick={() => {
+              setReceivedAmount(total.toFixed(2));
+              setPaymentOpen(true);
+              requestAnimationFrame(() => receivedAmountRef.current?.select());
+            }}
           >
             Finalizar (F5)
           </button>
@@ -1358,8 +1539,25 @@ export function PosPanel({
                     Subtotal <strong>{money(total)}</strong>
                   </span>
                   <span>
-                    Saldo <strong>{money(Math.max(0, total - paid))}</strong>
+                    {received > total ? 'Troco' : 'Saldo'}{' '}
+                    <strong>{money(Math.abs(total - received))}</strong>
                   </span>
+                  <label>
+                    Valor recebido
+                    <input
+                      ref={receivedAmountRef}
+                      value={receivedAmount}
+                      inputMode="decimal"
+                      onFocus={(event) => event.currentTarget.select()}
+                      onChange={(event) => setReceivedAmount(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          firstPaymentMethodRef.current?.focus();
+                        }
+                      }}
+                    />
+                  </label>
                 </div>
                 <div className="pos-payment-adjustments">
                   <button type="button" onClick={() => applyAdjustment('discount')}>
@@ -1386,6 +1584,7 @@ export function PosPanel({
                     <button
                       type="button"
                       key={method.id}
+                      ref={index === 0 ? firstPaymentMethodRef : undefined}
                       className={payments[0]?.paymentMethodId === method.id ? 'selected' : ''}
                       onClick={() =>
                         setPayments((current) =>
@@ -1548,7 +1747,12 @@ export function PosPanel({
                 </label>
                 <button
                   className="pos-finish"
-                  disabled={busy || !cart.length || Math.abs(total - paid) > 0.009}
+                  disabled={
+                    busy ||
+                    !cart.length ||
+                    Math.abs(total - paid) > 0.009 ||
+                    received + 0.009 < total
+                  }
                 >
                   {busy ? 'Finalizando…' : 'Confirmar venda (F8)'}
                 </button>
@@ -1587,6 +1791,7 @@ export function PosPanel({
           Observações <kbd>F12</kbd>
         </button>
       </nav>
+      {localSettingsOpen && <PosSettingsDialog onClose={() => setLocalSettingsOpen(false)} />}
       {statementOpen && customerId && (
         <CustomerStatementPanel
           customerId={customerId}

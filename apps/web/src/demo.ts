@@ -78,6 +78,11 @@ export const demoUser: CurrentUser = {
 };
 
 export function demoResponse(path: string, method = 'GET'): unknown {
+  if (path === '/master/customers' && method !== 'GET')
+    return {
+      id: '018f4f12-2222-7222-8222-000000000199',
+      legalName: 'Novo cliente do PDV',
+    };
   if (path.startsWith('/catalog/products'))
     return {
       items: [

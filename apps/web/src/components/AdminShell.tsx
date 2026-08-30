@@ -371,9 +371,9 @@ export function AdminShell({
     <div className={`app-layout ${section === 'pos' ? 'pos-app-mode' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-brand">
-          <div className="logo">EH</div>
+          <div className="logo">SL</div>
           <div className="sidebar-title">
-            <strong>ERP Híbrido</strong>
+            <strong>SoftLab Varejo</strong>
             <span>Gestão empresarial</span>
           </div>
         </div>
@@ -427,7 +427,7 @@ export function AdminShell({
       <div className="workspace">
         <header className="topbar">
           <div className="topbar-context">
-            <span className="context">{activeMenu ?? 'ERP HÍBRIDO'}</span>
+            <span className="context">{activeMenu ?? 'SOFTLAB VAREJO'}</span>
             <strong>{activeItem?.label ?? 'Visão geral'}</strong>
           </div>
           <div className="topbar-actions">
