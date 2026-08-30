@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { apiRequest } from '../api';
 import { PosPanel } from './PosPanel';
@@ -6,7 +6,10 @@ import { PosPanel } from './PosPanel';
 vi.mock('../api', () => ({ apiRequest: vi.fn() }));
 
 describe('PosPanel', () => {
-  beforeEach(() => vi.mocked(apiRequest).mockReset());
+  beforeEach(() => {
+    vi.mocked(apiRequest).mockReset();
+    localStorage.clear();
+  });
   it('searches a product and adds it to the checkout cart', async () => {
     vi.mocked(apiRequest).mockResolvedValue({
       customers: [],
@@ -35,6 +38,18 @@ describe('PosPanel', () => {
     expect(await screen.findByText('Café especial')).toBeInTheDocument();
     expect(screen.getAllByText(/18,90/)).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'F9 · Finalizar venda' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Trabalhar online' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Trabalhar offline' }));
+    expect(localStorage.getItem('erp:pos-operation-mode')).toBe('offline');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Trabalhar offline' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
   });
   it('requires a valid lot and seller when configured per sale', async () => {
     vi.mocked(apiRequest).mockResolvedValue({

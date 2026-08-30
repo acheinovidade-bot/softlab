@@ -2148,6 +2148,65 @@ th {
   background: #fff0df;
   color: #9b4908;
 }
+.pos-mode-switch {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid #cbd8d4;
+  border-radius: 12px;
+  background: #fff;
+}
+.pos-mode-switch button {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #52615d;
+  font-size: 12px;
+  font-weight: 700;
+}
+.pos-mode-switch button.active {
+  background: #0f766e;
+  color: #fff;
+}
+.print-manager-panel {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  padding: 24px;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgb(20 45 39 / 24%);
+}
+.print-manager-panel > header,
+.print-manager-panel > footer,
+.print-sector-list label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.print-sector-list {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+}
+.print-sector-list label {
+  padding: 14px;
+  border: 1px solid #dce6e2;
+  border-radius: 14px;
+}
+.print-sector-list span,
+.print-sector-list small {
+  display: block;
+}
+.print-sector-list select {
+  min-width: 280px;
+}
+.success-text {
+  color: #0f766e;
+  font-weight: 700;
+}
 .pos-connectivity strong {
   padding-left: 9px;
   border-left: 1px solid currentColor;

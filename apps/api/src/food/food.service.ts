@@ -50,7 +50,7 @@ export class FoodService {
       }),
       this.prisma.product.findMany({
         where: { companyId: auth.companyId, active: true, deletedAt: null },
-        select: { id: true, code: true, description: true },
+        select: { id: true, code: true, description: true, printSector: true },
         take: 1000,
         orderBy: { description: 'asc' },
       }),
@@ -84,7 +84,10 @@ export class FoodService {
         const price =
           prices.find((p) => p.productId === product.id && p.branchId === auth.branchId) ??
           prices.find((p) => p.productId === product.id && p.branchId === null);
-        return price ? [{ ...product, price: price.salePrice }] : [];
+        const posProduct = posLookups.products.find(({ id }) => id === product.id);
+        return price
+          ? [{ ...product, unitCode: posProduct?.unitCode ?? 'UN', price: price.salePrice }]
+          : [];
       }),
       paymentMethods: posLookups.paymentMethods,
       locations: posLookups.locations,

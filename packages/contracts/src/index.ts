@@ -584,6 +584,7 @@ export interface PosProduct {
   code: string;
   barcode: string | null;
   description: string;
+  unitCode: string;
   openPrice: boolean;
   controlsLot: boolean;
   controlsExpiry: boolean;
@@ -606,6 +607,11 @@ export interface PosCheckoutResult {
   itemCount: number;
   paymentCount: number;
   soldAt: string;
+  issuer: {
+    tradeName: string | null;
+    legalName: string;
+    taxId: string;
+  };
   offlinePending?: boolean;
 }
 export interface CashSessionSummary {

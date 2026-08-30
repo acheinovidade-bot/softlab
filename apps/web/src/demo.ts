@@ -86,6 +86,7 @@ export function demoResponse(path: string, method = 'GET'): unknown {
           code: 'CAF-001',
           barcode: '7891000100103',
           description: 'Café Especial 500 g',
+          unitCode: 'UN',
           shortDescription: 'Café 500 g',
           unitId: 'u1',
           active: true,
@@ -98,6 +99,7 @@ export function demoResponse(path: string, method = 'GET'): unknown {
           code: 'LEI-001',
           barcode: '7891000200209',
           description: 'Leite Integral 1 L',
+          unitCode: 'UN',
           shortDescription: 'Leite 1 L',
           unitId: 'u1',
           active: true,
@@ -133,6 +135,11 @@ export function demoResponse(path: string, method = 'GET'): unknown {
     };
   if (path === '/sales/pos/lookups')
     return {
+      issuer: {
+        tradeName: 'ERP Híbrido Mercado',
+        legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.',
+        taxId: '01027058000191',
+      },
       settings: {
         defaultCustomerId: null,
         defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
@@ -554,9 +561,27 @@ export function demoResponse(path: string, method = 'GET'): unknown {
       ],
       customers: [],
       products: [
-        { id: 'p1', code: 'CAF-001', description: 'Café Especial', price: '8.50' },
-        { id: 'p3', code: 'PAO-001', description: 'Pão de Queijo', price: '12.50' },
-        { id: 'p4', code: 'BRU-001', description: 'Bruschetta da Casa', price: '24.90' },
+        {
+          id: 'p1',
+          code: 'CAF-001',
+          description: 'Café Especial',
+          printSector: 'Bar',
+          price: '8.50',
+        },
+        {
+          id: 'p3',
+          code: 'PAO-001',
+          description: 'Pão de Queijo',
+          printSector: 'Cozinha',
+          price: '12.50',
+        },
+        {
+          id: 'p4',
+          code: 'BRU-001',
+          description: 'Bruschetta da Casa',
+          printSector: 'Cozinha',
+          price: '24.90',
+        },
       ],
       paymentMethods: [
         { id: '018f4f12-2222-7222-8222-000000000301', name: 'Dinheiro', type: 'cash' },
@@ -795,6 +820,7 @@ export function demoResponse(path: string, method = 'GET'): unknown {
       items: [
         {
           id: 'channel-item-1',
+          productId: 'p4',
           description: 'Bruschetta da Casa',
           quantity: '1',
           unitPrice: '24.90',
@@ -803,6 +829,7 @@ export function demoResponse(path: string, method = 'GET'): unknown {
         },
         {
           id: 'channel-item-2',
+          productId: 'p1',
           description: 'Café Especial',
           quantity: '1',
           unitPrice: '8.50',
@@ -822,6 +849,11 @@ export function demoResponse(path: string, method = 'GET'): unknown {
       itemCount: 3,
       paymentCount: 1,
       soldAt: new Date().toISOString(),
+      issuer: {
+        tradeName: 'ERP Híbrido Mercado',
+        legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.',
+        taxId: '01027058000191',
+      },
     };
   if (path.startsWith('/fiscal/nfce/'))
     return {

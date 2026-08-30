@@ -13,7 +13,8 @@
     "test": "turbo test",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "db:generate": "pnpm --filter @erp/api prisma:generate",
-    "db:migrate": "pnpm --filter @erp/api prisma:migrate"
+    "db:migrate": "pnpm --filter @erp/api prisma:migrate",
+    "windows:installers": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/windows/Build-Installers.ps1"
   },
   "devDependencies": {
     "@eslint/js": "9.17.0",

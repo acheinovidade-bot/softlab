@@ -37,6 +37,9 @@ describe('FoodServicePanel', () => {
     } as never);
     render(<FoodServicePanel canManage canOperate />);
     expect(screen.getByRole('heading', { name: 'Salão e comandas' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Configurar impressão' }));
+    expect(screen.getByRole('dialog', { name: 'Gerenciador de impressão' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
     const table = await screen.findByRole('button', { name: /Mesa 1/ });
     fireEvent.click(table);
     expect(screen.getByRole('button', { name: /Comanda 1/ })).toBeInTheDocument();

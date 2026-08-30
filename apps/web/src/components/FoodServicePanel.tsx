@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
 import type { PosCheckoutResult } from '@erp/contracts';
 import { SaleCompletionDialog, type SaleReceipt } from './SaleCompletionDialog';
+import { PrintManagerPanel } from './PrintManagerPanel';
+import { printFoodSector } from '../food-printing';
 import QRCode from 'qrcode';
 type Overview = {
   tables: Array<{
@@ -14,7 +16,14 @@ type Overview = {
   }>;
   waiters: Array<{ id: string; name: string }>;
   customers: Array<{ id: string; name: string }>;
-  products: Array<{ id: string; code: string; description: string; price: string }>;
+  products: Array<{
+    id: string;
+    code: string;
+    description: string;
+    unitCode?: string;
+    printSector?: string | null;
+    price: string;
+  }>;
   paymentMethods: Array<{ id: string; name: string; type: string }>;
   locations: Array<{ id: string; code: string; name: string }>;
   tabs: Array<{
@@ -33,6 +42,7 @@ type Summary = {
   tab: { number: string; openedAt: string; guests: number };
   items: Array<{
     id: string;
+    productId: string;
     description: string;
     quantity: string;
     unitPrice: string;
@@ -64,6 +74,7 @@ export function FoodServicePanel({
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
   const [paying, setPaying] = useState(false);
+  const [printManagerOpen, setPrintManagerOpen] = useState(false);
   const [tableQr, setTableQr] = useState<{ name: string; url: string; image: string } | null>(null);
   async function load() {
     try {
@@ -86,8 +97,10 @@ export function FoodServicePanel({
       });
       if (path === '/food/tabs' && result?.id) setTabId(result.id);
       await load();
+      return true;
     } catch (reason) {
       setError(message(reason));
+      return false;
     }
   }
   async function showSummary(id: string) {
@@ -117,8 +130,11 @@ export function FoodServicePanel({
       });
       setReceipt({
         ...result,
+        sellerName: data.waiters.find(({ id }) => id === form.get('sellerId'))?.name,
         lines: summary.items.map((item) => ({
+          code: data.products.find(({ id }) => id === item.productId)?.code,
           description: item.description,
+          unit: data.products.find(({ id }) => id === item.productId)?.unitCode ?? 'UN',
           quantity: Number(item.quantity),
           unitPrice: Number(item.unitPrice),
           total: Number(item.total),
@@ -173,6 +189,9 @@ export function FoodServicePanel({
             Reservada
           </span>
         </div>
+        <button type="button" className="quiet" onClick={() => setPrintManagerOpen(true)}>
+          Configurar impressão
+        </button>
       </header>
       {error && (
         <div className="error" role="alert">
@@ -356,12 +375,31 @@ export function FoodServicePanel({
                         onSubmit={(event) => {
                           event.preventDefault();
                           const f = new FormData(event.currentTarget);
-                          void post(`/food/tabs/${selected.id}/items`, {
-                            productId: f.get('productId'),
-                            quantity: f.get('quantity'),
-                            notes: f.get('notes'),
-                          });
-                          event.currentTarget.reset();
+                          const rawProductId = f.get('productId');
+                          const productId = typeof rawProductId === 'string' ? rawProductId : '';
+                          const quantity = Number(f.get('quantity') ?? 1);
+                          const rawNotes = f.get('notes');
+                          const notes = typeof rawNotes === 'string' ? rawNotes : '';
+                          const product = data.products.find(({ id }) => id === productId);
+                          const form = event.currentTarget;
+                          void (async () => {
+                            const saved = await post(`/food/tabs/${selected.id}/items`, {
+                              productId,
+                              quantity,
+                              notes,
+                            });
+                            if (!saved) return;
+                            if (product)
+                              await printFoodSector({
+                                sector: product.printSector ?? null,
+                                tabNumber: selected.number,
+                                code: product.code,
+                                description: product.description,
+                                quantity,
+                                notes,
+                              });
+                            form.reset();
+                          })().catch((reason) => setError(message(reason)));
                         }}
                       >
                         <h3>Lançar produto</h3>
@@ -474,6 +512,21 @@ export function FoodServicePanel({
         </div>
       )}
       {receipt && <SaleCompletionDialog receipt={receipt} onNext={() => setReceipt(null)} />}
+      {printManagerOpen && (
+        <PrintManagerPanel
+          sectors={[
+            ...new Set([
+              'Cozinha',
+              'Bar',
+              'Expedição',
+              ...data.products.flatMap((product) =>
+                product.printSector ? [product.printSector] : [],
+              ),
+            ]),
+          ]}
+          onClose={() => setPrintManagerOpen(false)}
+        />
+      )}
       {tableQr && (
         <div
           className="food-summary-backdrop"

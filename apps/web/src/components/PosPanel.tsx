@@ -13,6 +13,7 @@ import {
 } from '../offline-pos';
 
 type Lookup = {
+  issuer: PosCheckoutResult['issuer'];
   customers: Array<{ id: string; name: string }>;
   sellers: Array<{ id: string; name: string }>;
   paymentMethods: Array<{
@@ -62,6 +63,7 @@ export function PosPanel({
   onOpenSettings?: () => void;
 }) {
   const [lookup, setLookup] = useState<Lookup>({
+    issuer: { tradeName: null, legalName: '', taxId: '' },
     customers: [],
     sellers: [],
     paymentMethods: [],
@@ -82,6 +84,9 @@ export function PosPanel({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
+  const [forcedOffline, setForcedOffline] = useState(
+    () => localStorage.getItem('erp:pos-operation-mode') === 'offline',
+  );
   const [pendingOffline, setPendingOffline] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -110,6 +115,19 @@ export function PosPanel({
 
   useEffect(() => {
     void (async () => {
+      if (forcedOffline) {
+        const cached = await readPosLookups<Lookup>(offlineScope);
+        if (!cached)
+          return setError(
+            'Ative o modo online uma vez para preparar este computador para uso offline',
+          );
+        setLookup(cached);
+        applyDefaults(cached);
+        setError(
+          'Modo offline manual ativado: as vendas serão sincronizadas quando voltar ao online',
+        );
+        return;
+      }
       try {
         const data = await apiRequest<Lookup>('/sales/pos/lookups');
         await cachePosLookups(offlineScope, data);
@@ -139,7 +157,7 @@ export function PosPanel({
         setError('Modo offline: usando catálogo armazenado neste dispositivo');
       }
     })();
-  }, [offlineScope]);
+  }, [offlineScope, forcedOffline]);
 
   function applyDefaults(data: Lookup) {
     const customer = data.settings?.defaultCustomerId;
@@ -162,7 +180,7 @@ export function PosPanel({
       setPendingOffline(await pendingCheckoutCount(offlineScope));
     }
     async function synchronize() {
-      if (!navigator.onLine) return;
+      if (!navigator.onLine || forcedOffline) return;
       setOnline(true);
       setSyncing(true);
       try {
@@ -192,7 +210,7 @@ export function PosPanel({
       window.removeEventListener('erp:offline-queue', connected);
       window.removeEventListener('erp:network-restored', connected);
     };
-  }, [offlineScope]);
+  }, [offlineScope, forcedOffline]);
   useEffect(() => {
     if (payments.length === 1)
       setPayments((current) => current.map((item) => ({ ...item, amount: total.toFixed(2) })));
@@ -293,6 +311,7 @@ export function PosPanel({
     setBusy(true);
     setError('');
     try {
+      if (forcedOffline) throw new TypeError('Modo offline manual ativado');
       const body = {
         idempotencyKey: requestKey.current,
         customerId: customerId || null,
@@ -320,8 +339,11 @@ export function PosPanel({
       setReceipt({
         ...result,
         customerName: lookup.customers.find(({ id }) => id === body.customerId)?.name,
+        sellerName: lookup.sellers.find(({ id }) => id === body.sellerId)?.name,
         lines: cart.map((item) => ({
+          code: item.code,
           description: item.description,
+          unit: item.unitCode,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           total: item.quantity * item.unitPrice - item.discount,
@@ -378,10 +400,14 @@ export function PosPanel({
           itemCount: cart.length,
           paymentCount: payments.length,
           soldAt: new Date().toISOString(),
+          issuer: lookup.issuer,
           offlinePending: true,
           customerName: lookup.customers.find(({ id }) => id === body.customerId)?.name,
+          sellerName: lookup.sellers.find(({ id }) => id === body.sellerId)?.name,
           lines: cart.map((item) => ({
+            code: item.code,
             description: item.description,
+            unit: item.unitCode,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             total: item.quantity * item.unitPrice - item.discount,
@@ -429,6 +455,14 @@ export function PosPanel({
     reset();
     requestAnimationFrame(() => searchRef.current?.focus());
   }
+  function setOperationMode(nextOffline: boolean) {
+    localStorage.setItem('erp:pos-operation-mode', nextOffline ? 'offline' : 'online');
+    setForcedOffline(nextOffline);
+    if (!nextOffline) {
+      setError(navigator.onLine ? '' : 'Sem conexão física: o PDV continuará offline');
+      window.dispatchEvent(new Event('erp:network-restored'));
+    }
+  }
   return (
     <section className="pos-screen">
       <header className="pos-header">
@@ -437,13 +471,31 @@ export function PosPanel({
           <h1>Venda rápida</h1>
         </div>
         <div className="pos-header-tools">
-          <div className={`pos-connectivity ${online ? 'online' : 'offline'}`}>
-            <span>{online ? '● Online' : '● Offline'}</span>
+          <div className={`pos-connectivity ${online && !forcedOffline ? 'online' : 'offline'}`}>
+            <span>{online && !forcedOffline ? '● Online' : '● Offline'}</span>
             {pendingOffline > 0 && (
               <strong>
                 {syncing ? 'Sincronizando…' : `${pendingOffline} venda(s) pendente(s)`}
               </strong>
             )}
+          </div>
+          <div className="pos-mode-switch" role="group" aria-label="Modo de operação do PDV">
+            <button
+              type="button"
+              className={!forcedOffline ? 'active' : ''}
+              aria-pressed={!forcedOffline}
+              onClick={() => setOperationMode(false)}
+            >
+              Trabalhar online
+            </button>
+            <button
+              type="button"
+              className={forcedOffline ? 'active' : ''}
+              aria-pressed={forcedOffline}
+              onClick={() => setOperationMode(true)}
+            >
+              Trabalhar offline
+            </button>
           </div>
         </div>
       </header>
