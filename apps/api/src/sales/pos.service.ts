@@ -709,7 +709,7 @@ export class PosService {
       orderBy: { createdAt: 'desc' },
     });
     const orderIds = orders.map(({ id }) => id);
-    const [sales, items, receivables, totalDebt] = await Promise.all([
+    const [sales, items, receivables, allCustomerReceivables, totalDebt] = await Promise.all([
       this.prisma.sale.findMany({
         where: { companyId: auth.companyId, orderId: { in: orderIds } },
       }),
@@ -720,13 +720,20 @@ export class PosService {
       this.prisma.accountReceivable.findMany({
         where: { companyId: auth.companyId, customerId, orderId: { in: orderIds } },
       }),
+      this.prisma.accountReceivable.findMany({
+        where: { companyId: auth.companyId, branchId: auth.branchId, customerId },
+      }),
       this.prisma.accountReceivable.aggregate({
         where: { companyId: auth.companyId, customerId, status: { in: ['open', 'partial'] } },
         _sum: { openAmount: true },
       }),
     ]);
     const settlementRows = await this.prisma.financialSettlement.findMany({
-      where: { companyId: auth.companyId, receivableId: { in: receivables.map(({ id }) => id) } },
+      where: {
+        companyId: auth.companyId,
+        receivableId: { in: allCustomerReceivables.map(({ id }) => id) },
+      },
+      orderBy: { settledAt: 'desc' },
     });
     const coupons = sales.map((sale) => {
       const receivable = receivables.find(({ orderId }) => orderId === sale.orderId);
@@ -754,6 +761,16 @@ export class PosService {
           })),
       };
     });
+    const settlements = settlementRows.map((row) => {
+      const account = allCustomerReceivables.find(({ id }) => id === row.receivableId);
+      return {
+        id: row.id,
+        settledAt: row.settledAt,
+        amount: row.principalAmount,
+        account: account?.description ?? 'Conta recebida',
+        accountStatus: account?.status ?? 'paid',
+      };
+    });
     return {
       customer: {
         id: customer.id,
@@ -764,6 +781,8 @@ export class PosService {
       totalPurchased: coupons.reduce((sum, coupon) => sum.add(coupon.total), new Prisma.Decimal(0)),
       totalPaid: coupons.reduce((sum, coupon) => sum.add(coupon.amountPaid), new Prisma.Decimal(0)),
       totalDue: totalDebt._sum.openAmount ?? new Prisma.Decimal(0),
+      lastPayment: settlements[0] ?? null,
+      settlements,
       coupons,
     };
   }

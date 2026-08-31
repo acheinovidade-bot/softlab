@@ -1,16 +1,34 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 import { apiRequest } from '../api';
 import { CustomerStatementPanel } from './CustomerStatementPanel';
 vi.mock('../api', () => ({ apiRequest: vi.fn() }));
 describe('CustomerStatementPanel', () => {
   it('shows products, coupon debt and partial payment action', async () => {
+    const write = vi.fn();
+    const close = vi.fn();
+    const open = vi.spyOn(window, 'open').mockReturnValue({ document: { write, close } } as never);
     vi.mocked(apiRequest).mockResolvedValue({
       customer: { id: 'c1', name: 'Maria', creditLimit: '500' },
       period: { from: '2026-08-01', to: '2026-08-31' },
       totalPurchased: '80',
       totalPaid: '20',
       totalDue: '60',
+      lastPayment: {
+        settledAt: '2026-08-25T14:30:00Z',
+        amount: '20',
+        account: 'Crediário VEN-001',
+        accountStatus: 'partial',
+      },
+      settlements: [
+        {
+          id: 'st1',
+          settledAt: '2026-08-25T14:30:00Z',
+          amount: '20',
+          account: 'Crediário VEN-001',
+          accountStatus: 'partial',
+        },
+      ],
       coupons: [
         {
           saleId: 's1',
@@ -36,6 +54,16 @@ describe('CustomerStatementPanel', () => {
     expect(await screen.findByText(/Maria · Limite.*500,00/)).toBeInTheDocument();
     expect(screen.getByText(/Café especial/)).toBeInTheDocument();
     expect(screen.getByText('VEN-001')).toBeInTheDocument();
+    expect(screen.getAllByText(/25\/08\/2026/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Pagamentos e contas baixadas')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Receber parcial' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Imprimir extrato 80 mm' }));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('EXTRATO DE CREDIÁRIO'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('Café especial'));
+    expect(close).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Resumido · somente valores' }));
+    expect(screen.queryByText(/Café especial/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Imprimir extrato 80 mm' })).toBeInTheDocument();
+    open.mockRestore();
   });
 });

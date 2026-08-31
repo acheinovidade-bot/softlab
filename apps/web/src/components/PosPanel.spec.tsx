@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import { apiRequest } from '../api';
 import { PosPanel } from './PosPanel';
@@ -149,6 +149,46 @@ describe('PosPanel', () => {
     expect(screen.getByLabelText('Token ou dispositivo')).toBeInTheDocument();
     expect(screen.getByLabelText('Senha/PIN do token')).toHaveAttribute('type', 'password');
     expect(navigate).not.toHaveBeenCalled();
+  });
+  it('opens customer credit receipt and statement locally with F11', async () => {
+    vi.mocked(apiRequest).mockImplementation((path) => {
+      if (path.startsWith('/sales/pos/customers/'))
+        return Promise.resolve({
+          customer: { id: 'customer-1', name: 'Ana Martins', creditLimit: '1000' },
+          period: { from: '2026-08-01', to: '2026-08-31' },
+          totalPurchased: '120',
+          totalPaid: '40',
+          totalDue: '80',
+          lastPayment: {
+            settledAt: '2026-08-25T14:30:00Z',
+            amount: '40',
+            account: 'Crediário VEN-010',
+            accountStatus: 'partial',
+          },
+          settlements: [],
+          coupons: [],
+        } as never);
+      return Promise.resolve({
+        customers: [{ id: 'customer-1', name: 'Ana Martins' }],
+        sellers: [],
+        paymentMethods: [{ id: 'pix', code: 'PIX', name: 'PIX', type: 'pix' }],
+        locations: [{ id: 'location-1', code: 'LOJA', name: 'Loja' }],
+        products: [],
+      } as never);
+    });
+
+    render(<PosPanel canDiscount={false} canReadCredit canReceiveCredit />);
+    fireEvent.keyDown(window, { key: 'F11' });
+    const dialog = await screen.findByRole('dialog', { name: 'Recebimento de contas' });
+    fireEvent.change(screen.getByPlaceholderText('Digite o nome do cliente'), {
+      target: { value: 'Ana' },
+    });
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: /Ana Martins.*Extrato do cliente/ }),
+    );
+    expect(await screen.findByRole('dialog', { name: 'Extrato do cliente' })).toBeInTheDocument();
+    expect(screen.getByText(/Último pagamento/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Imprimir extrato 80 mm' })).toBeInTheDocument();
   });
   it('requires a valid lot without interrupting the sale to ask for a seller', async () => {
     vi.mocked(apiRequest).mockResolvedValue({

@@ -637,6 +637,19 @@ export interface CustomerCreditStatement {
   totalPurchased: string;
   totalPaid: string;
   totalDue: string;
+  lastPayment: {
+    settledAt: string;
+    amount: string;
+    account: string;
+    accountStatus: string;
+  } | null;
+  settlements: Array<{
+    id: string;
+    settledAt: string;
+    amount: string;
+    account: string;
+    accountStatus: string;
+  }>;
   coupons: Array<{
     saleId: string;
     saleNumber: string;

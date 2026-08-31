@@ -107,6 +107,8 @@ export function PosPanel({
   const [sellerId, setSellerId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [statementOpen, setStatementOpen] = useState(false);
+  const [creditCustomerOpen, setCreditCustomerOpen] = useState(false);
+  const [creditCustomerQuery, setCreditCustomerQuery] = useState('');
   const [lotSelection, setLotSelection] = useState<PosProduct | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -392,7 +394,7 @@ export function PosPanel({
       }
       if (event.key === 'F11') {
         event.preventDefault();
-        onNavigate?.('pos-operations');
+        setCreditCustomerOpen(true);
       }
       if (event.altKey && event.key.toLowerCase() === 'r') {
         event.preventDefault();
@@ -424,7 +426,9 @@ export function PosPanel({
           notesOpen ||
           productListOpen ||
           localSettingsOpen ||
-          certificateOpen)
+          certificateOpen ||
+          creditCustomerOpen ||
+          statementOpen)
       ) {
         setHelpOpen(false);
         setPaymentOpen(false);
@@ -435,6 +439,8 @@ export function PosPanel({
         setProductListOpen(false);
         setLocalSettingsOpen(false);
         setCertificateOpen(false);
+        setCreditCustomerOpen(false);
+        setStatementOpen(false);
       } else if (event.key === 'Escape' && cashOpening) onExit?.();
       if (paymentOpen && event.target !== receivedAmountRef.current && /^[1-9]$/.test(event.key)) {
         const method = lookup.paymentMethods[Number(event.key) - 1];
@@ -464,6 +470,8 @@ export function PosPanel({
     productListOpen,
     localSettingsOpen,
     certificateOpen,
+    creditCustomerOpen,
+    statementOpen,
     cashOpening,
     lookup.paymentMethods,
     total,
@@ -800,7 +808,7 @@ export function PosPanel({
       setProductListOpen(true);
       requestAnimationFrame(() => productListRef.current?.focus());
     } else if (action === 'presales') onNavigate?.('pre-sales');
-    else if (action === 'operations') onNavigate?.('pos-operations');
+    else if (action === 'operations') setCreditCustomerOpen(true);
     else if (action === 'tape') onNavigate?.('cash-tape');
     else if (action === 'returns') onNavigate?.('returns');
     else if (action === 'loyalty') onNavigate?.('loyalty');
@@ -1249,6 +1257,75 @@ export function PosPanel({
                 </footer>
               </>
             )}
+          </section>
+        </div>
+      )}
+      {creditCustomerOpen && (
+        <div className="modal-backdrop pos-modal-layer" role="presentation">
+          <section
+            className="pos-party-modal pos-credit-customer-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="credit-customer-title"
+          >
+            <header>
+              <div>
+                <span className="eyebrow">F11 · CREDIÁRIO</span>
+                <h2 id="credit-customer-title">Recebimento de contas</h2>
+              </div>
+              <button type="button" className="quiet" onClick={() => setCreditCustomerOpen(false)}>
+                Fechar
+              </button>
+            </header>
+            <p className="pos-credit-customer-hint">
+              Digite o nome do cliente para consultar compras, saldo e pagamentos.
+            </p>
+            <input
+              value={creditCustomerQuery}
+              onChange={(event) => setCreditCustomerQuery(event.target.value)}
+              placeholder="Digite o nome do cliente"
+              autoFocus
+            />
+            <div className="pos-party-list">
+              {lookup.customers
+                .filter((customer) =>
+                  customer.name.toLowerCase().includes(creditCustomerQuery.trim().toLowerCase()),
+                )
+                .map((customer) => (
+                  <button
+                    type="button"
+                    key={customer.id}
+                    onClick={() => {
+                      setCustomerId(customer.id);
+                      setCreditCustomerOpen(false);
+                      setStatementOpen(true);
+                    }}
+                  >
+                    <span>
+                      <strong>{customer.name}</strong>
+                      <small>Consultar compras e receber crediário</small>
+                    </span>
+                    <b>Extrato do cliente</b>
+                  </button>
+                ))}
+              {creditCustomerQuery.trim() &&
+                !lookup.customers.some((customer) =>
+                  customer.name.toLowerCase().includes(creditCustomerQuery.trim().toLowerCase()),
+                ) && <div className="pos-modal-empty">Cliente não localizado.</div>}
+            </div>
+            <footer>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => {
+                  setCreditCustomerOpen(false);
+                  setCustomerCreateOpen(true);
+                  setCustomerPickerOpen(true);
+                }}
+              >
+                Cadastrar novo cliente
+              </button>
+            </footer>
           </section>
         </div>
       )}

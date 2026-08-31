@@ -1,4 +1,95 @@
-import type { CurrentUser } from '@erp/contracts';
+import type { CurrentUser, CustomerCreditStatement } from '@erp/contracts';
+
+const demoBaseCustomers = [
+  { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
+  { id: '018f4f12-2222-7222-8222-000000000102', name: 'Mercado Boa Mesa' },
+];
+const demoPosCustomers = [...demoBaseCustomers, ...readSavedDemoCustomers()];
+
+const demoStatements: Record<string, CustomerCreditStatement> = {
+  '018f4f12-2222-7222-8222-000000000101': {
+    customer: {
+      id: '018f4f12-2222-7222-8222-000000000101',
+      name: 'Ana Martins',
+      creditLimit: '1500.00',
+    },
+    period: { from: '2026-08-01', to: '2026-08-31' },
+    totalPurchased: '247.30',
+    totalPaid: '80.00',
+    totalDue: '167.30',
+    lastPayment: {
+      settledAt: '2026-08-27T15:42:00.000Z',
+      amount: '80.00',
+      account: 'Crediário VEN-000184',
+      accountStatus: 'partial',
+    },
+    settlements: [
+      {
+        id: 'settlement-demo-1',
+        settledAt: '2026-08-27T15:42:00.000Z',
+        amount: '80.00',
+        account: 'Crediário VEN-000184',
+        accountStatus: 'partial',
+      },
+    ],
+    coupons: [
+      {
+        saleId: 'sale-demo-credit-1',
+        saleNumber: 'VEN-000184',
+        soldAt: '2026-08-20T13:15:00.000Z',
+        total: '147.50',
+        creditAmount: '147.50',
+        amountPaid: '80.00',
+        amountDue: '67.50',
+        receivableId: 'receivable-demo-1',
+        items: [
+          {
+            description: 'Café Especial 500 g',
+            quantity: '3',
+            unitPrice: '32.90',
+            total: '98.70',
+          },
+          {
+            description: 'Leite Integral 1 L',
+            quantity: '4',
+            unitPrice: '6.20',
+            total: '24.80',
+          },
+          {
+            description: 'Pão de Queijo Artesanal',
+            quantity: '2',
+            unitPrice: '12.00',
+            total: '24.00',
+          },
+        ],
+      },
+      {
+        saleId: 'sale-demo-credit-2',
+        saleNumber: 'VEN-000191',
+        soldAt: '2026-08-29T17:08:00.000Z',
+        total: '99.80',
+        creditAmount: '99.80',
+        amountPaid: '0.00',
+        amountDue: '99.80',
+        receivableId: 'receivable-demo-2',
+        items: [
+          {
+            description: 'Café Especial 500 g',
+            quantity: '2',
+            unitPrice: '32.90',
+            total: '65.80',
+          },
+          {
+            description: 'Produto de mercearia',
+            quantity: '2',
+            unitPrice: '17.00',
+            total: '34.00',
+          },
+        ],
+      },
+    ],
+  },
+};
 
 export const demoUser: CurrentUser = {
   id: '018f4f12-2222-7222-8222-000000000001',
@@ -77,12 +168,51 @@ export const demoUser: CurrentUser = {
   ],
 };
 
-export function demoResponse(path: string, method = 'GET'): unknown {
-  if (path === '/master/customers' && method !== 'GET')
-    return {
-      id: '018f4f12-2222-7222-8222-000000000199',
-      legalName: 'Novo cliente do PDV',
+export function demoResponse(path: string, method = 'GET', requestBody?: BodyInit | null): unknown {
+  if (path === '/master/customers' && method !== 'GET') {
+    const body = demoBody(requestBody);
+    const id = crypto.randomUUID();
+    const legalName =
+      typeof body.legalName === 'string' && body.legalName.trim()
+        ? body.legalName.trim()
+        : 'Cliente sem nome';
+    demoPosCustomers.push({ id, name: legalName });
+    persistDemoCustomers();
+    demoStatements[id] = emptyStatement(id, legalName);
+    return { id, legalName };
+  }
+  const statementMatch = path.match(/^\/sales\/pos\/customers\/([^/]+)\/statement\?/);
+  if (statementMatch) {
+    const customerId = statementMatch[1]!;
+    const customer = demoPosCustomers.find(({ id }) => id === customerId);
+    return demoStatements[customerId] ?? emptyStatement(customerId, customer?.name ?? 'Cliente');
+  }
+  const settlementMatch = path.match(/^\/sales\/pos\/receivables\/([^/]+)\/settlements$/);
+  if (settlementMatch && method !== 'GET') {
+    const statement = Object.values(demoStatements).find((item) =>
+      item.coupons.some(({ receivableId }) => receivableId === settlementMatch[1]),
+    );
+    const coupon = statement?.coupons.find(
+      ({ receivableId }) => receivableId === settlementMatch[1],
+    );
+    if (!statement || !coupon) throw new Error('Conta a receber não encontrada');
+    const body = demoBody(requestBody);
+    const amount = Number(body.amount ?? 0);
+    coupon.amountPaid = (Number(coupon.amountPaid) + amount).toFixed(2);
+    coupon.amountDue = Math.max(0, Number(coupon.amountDue) - amount).toFixed(2);
+    statement.totalPaid = (Number(statement.totalPaid) + amount).toFixed(2);
+    statement.totalDue = Math.max(0, Number(statement.totalDue) - amount).toFixed(2);
+    const payment = {
+      id: crypto.randomUUID(),
+      settledAt: new Date().toISOString(),
+      amount: amount.toFixed(2),
+      account: `Crediário ${coupon.saleNumber}`,
+      accountStatus: Number(coupon.amountDue) === 0 ? 'paid' : 'partial',
     };
+    statement.settlements.unshift(payment);
+    statement.lastPayment = payment;
+    return payment;
+  }
   if (path.startsWith('/catalog/products'))
     return {
       items: [
@@ -151,10 +281,7 @@ export function demoResponse(path: string, method = 'GET'): unknown {
         defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
         sellerMode: 'default',
       },
-      customers: [
-        { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
-        { id: '018f4f12-2222-7222-8222-000000000102', name: 'Mercado Boa Mesa' },
-      ],
+      customers: demoPosCustomers,
       sellers: [{ id: '018f4f12-2222-7222-8222-000000000201', name: 'Marina Costa' }],
       paymentMethods: [
         {
@@ -882,6 +1009,59 @@ export function demoResponse(path: string, method = 'GET'): unknown {
       total: '87.30',
     };
   throw new Error('Demonstração sem resposta para este recurso');
+}
+
+function demoBody(body?: BodyInit | null) {
+  if (typeof body !== 'string') return {} as Record<string, unknown>;
+  try {
+    return JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+}
+
+function readSavedDemoCustomers() {
+  if (typeof localStorage === 'undefined') return [] as Array<{ id: string; name: string }>;
+  try {
+    const saved = JSON.parse(localStorage.getItem('erp:demo-pos-customers') ?? '[]') as unknown;
+    return Array.isArray(saved)
+      ? saved.filter(
+          (item): item is { id: string; name: string } =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof (item as { id?: unknown }).id === 'string' &&
+            typeof (item as { name?: unknown }).name === 'string',
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDemoCustomers() {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(
+    'erp:demo-pos-customers',
+    JSON.stringify(
+      demoPosCustomers.filter(({ id }) => !demoBaseCustomers.some((item) => item.id === id)),
+    ),
+  );
+}
+
+function emptyStatement(id: string, name: string): CustomerCreditStatement {
+  return {
+    customer: { id, name, creditLimit: '0.00' },
+    period: {
+      from: new Date().toISOString().slice(0, 8) + '01',
+      to: new Date().toISOString().slice(0, 10),
+    },
+    totalPurchased: '0.00',
+    totalPaid: '0.00',
+    totalDue: '0.00',
+    lastPayment: null,
+    settlements: [],
+    coupons: [],
+  };
 }
 
 function demoOrder(id: string, number: string, status: string, customer: string, total: string) {

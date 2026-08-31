@@ -19,6 +19,7 @@ export function CustomerStatementPanel({
   );
   const [to, setTo] = useState(today.toISOString().slice(0, 10));
   const [statement, setStatement] = useState<CustomerCreditStatement | null>(null);
+  const [view, setView] = useState<'summary' | 'complete'>('complete');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function load() {
@@ -106,6 +107,42 @@ export function CustomerStatementPanel({
         </form>
         {statement && (
           <>
+            <div className="statement-actions" role="group" aria-label="Opções do extrato">
+              <button
+                type="button"
+                className={view === 'summary' ? 'active' : ''}
+                aria-pressed={view === 'summary'}
+                onClick={() => setView('summary')}
+              >
+                Resumido · somente valores
+              </button>
+              <button
+                type="button"
+                className={view === 'complete' ? 'active' : ''}
+                aria-pressed={view === 'complete'}
+                onClick={() => setView('complete')}
+              >
+                Completo · compras e produtos
+              </button>
+              <button type="button" className="primary" onClick={() => print80mm(statement, view)}>
+                Imprimir extrato 80 mm
+              </button>
+            </div>
+            <div className="statement-last-payment">
+              <span>Último pagamento</span>
+              {statement.lastPayment ? (
+                <div>
+                  <strong>{money(statement.lastPayment.amount)}</strong>
+                  <span>{dateTime(statement.lastPayment.settledAt)}</span>
+                  <small>
+                    {statement.lastPayment.account} ·{' '}
+                    {accountStatus(statement.lastPayment.accountStatus)}
+                  </small>
+                </div>
+              ) : (
+                <strong>Nenhum pagamento registrado</strong>
+              )}
+            </div>
             <div className="statement-totals">
               <article>
                 <span>Compras no período</span>
@@ -130,16 +167,18 @@ export function CustomerStatementPanel({
                     </div>
                     <strong>{money(coupon.total)}</strong>
                   </header>
-                  <div className="statement-items">
-                    {coupon.items.map((item, index) => (
-                      <div key={`${item.description}-${index}`}>
-                        <span>
-                          {number(item.quantity)} × {item.description}
-                        </span>
-                        <span>{money(item.total)}</span>
-                      </div>
-                    ))}
-                  </div>
+                  {view === 'complete' && (
+                    <div className="statement-items">
+                      {coupon.items.map((item, index) => (
+                        <div key={`${item.description}-${index}`}>
+                          <span>
+                            {number(item.quantity)} × {item.description}
+                          </span>
+                          <span>{money(item.total)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <footer>
                     <span>Valor desta venda em aberto</span>
                     <strong>{money(coupon.amountDue)}</strong>
@@ -180,6 +219,22 @@ export function CustomerStatementPanel({
                 <p className="muted">Nenhuma compra no período selecionado.</p>
               )}
             </div>
+            {view === 'complete' && statement.settlements?.length > 0 && (
+              <section className="statement-settlements">
+                <h3>Pagamentos e contas baixadas</h3>
+                {statement.settlements.map((settlement) => (
+                  <div key={settlement.id}>
+                    <span>
+                      <strong>{settlement.account}</strong>
+                      <small>
+                        {dateTime(settlement.settledAt)} · {accountStatus(settlement.accountStatus)}
+                      </small>
+                    </span>
+                    <strong>{money(settlement.amount)}</strong>
+                  </div>
+                ))}
+              </section>
+            )}
           </>
         )}
       </section>
@@ -202,4 +257,55 @@ function randomId() {
 }
 function message(reason: unknown) {
   return reason instanceof Error ? reason.message : 'Falha ao consultar o extrato';
+}
+
+function accountStatus(value: string) {
+  if (value === 'paid') return 'Quitada';
+  if (value === 'partial') return 'Pagamento parcial';
+  if (value === 'open') return 'Em aberto';
+  return value;
+}
+
+function print80mm(statement: CustomerCreditStatement, view: 'summary' | 'complete') {
+  const target = window.open('', '_blank', 'popup,width=420,height=760');
+  if (!target) return;
+  const coupons = statement.coupons
+    .map((coupon) => {
+      const items =
+        view === 'complete'
+          ? coupon.items
+              .map(
+                (item) =>
+                  `<div class="row item"><span>${number(item.quantity)}x ${escapeHtml(item.description)}</span><b>${money(item.total)}</b></div>`,
+              )
+              .join('')
+          : '';
+      return `<section><div class="row"><b>${escapeHtml(coupon.saleNumber)}</b><span>${dateTime(coupon.soldAt)}</span></div>${items}<div class="row"><span>Total da compra</span><b>${money(coupon.total)}</b></div><div class="row due"><span>Em aberto</span><b>${money(coupon.amountDue)}</b></div></section>`;
+    })
+    .join('');
+  const last = statement.lastPayment
+    ? `<p><b>ÚLTIMO PAGAMENTO</b><br>${dateTime(statement.lastPayment.settledAt)}<br>${escapeHtml(statement.lastPayment.account)}<br><b>${money(statement.lastPayment.amount)}</b></p>`
+    : '<p><b>ÚLTIMO PAGAMENTO</b><br>Nenhum pagamento registrado</p>';
+  const settlements =
+    view === 'complete' && statement.settlements?.length
+      ? `<h3>CONTAS BAIXADAS</h3>${statement.settlements
+          .map(
+            (item) =>
+              `<div class="row"><span>${escapeHtml(item.account)}<small>${dateTime(item.settledAt)}</small></span><b>${money(item.amount)}</b></div>`,
+          )
+          .join('')}`
+      : '';
+  target.document.write(
+    `<!doctype html><html><head><meta charset="utf-8"><title>Extrato do cliente</title><style>@page{size:80mm auto;margin:2mm}*{box-sizing:border-box}body{width:74mm;margin:0 auto;font:10px/1.3 Arial,sans-serif;color:#000}h1,h2,h3,p{text-align:center;margin:5px 0}h1{font-size:15px}h2{font-size:12px;border-block:1px dashed;padding:5px}.row{display:flex;justify-content:space-between;gap:5px;padding:4px 0;border-bottom:1px dashed #777}.row>span:first-child{max-width:52mm}.row small{display:block}.item{font-size:9px}.due{font-size:11px}.totals{margin:6px 0;padding:5px;border:1px solid}.totals .row:last-child{font-size:13px;border:0}section{margin:7px 0}</style></head><body><h1>${escapeHtml(statement.customer.name)}</h1><h2>EXTRATO DE CREDIÁRIO · ${view === 'complete' ? 'COMPLETO' : 'RESUMIDO'}</h2><p>Período: ${new Date(statement.period.from).toLocaleDateString('pt-BR')} a ${new Date(statement.period.to).toLocaleDateString('pt-BR')}</p>${last}<div class="totals"><div class="row"><span>Compras</span><b>${money(statement.totalPurchased)}</b></div><div class="row"><span>Pagamentos</span><b>${money(statement.totalPaid)}</b></div><div class="row"><span>TOTAL EM ABERTO</span><b>${money(statement.totalDue)}</b></div></div>${coupons}${settlements}<p>Impresso em ${new Date().toLocaleString('pt-BR')}</p><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}</script></body></html>`,
+  );
+  target.document.close();
+}
+
+function escapeHtml(value: string) {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] ??
+      character,
+  );
 }
