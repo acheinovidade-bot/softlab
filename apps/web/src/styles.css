@@ -4902,6 +4902,28 @@ th {
 .pos-credit-customer-modal .pos-party-list {
   min-height: 180px;
 }
+.pos-credit-required {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #f0bf88;
+  border-radius: 10px;
+  background: #fff4e5;
+  color: #8a460c;
+  font-weight: 800;
+}
+.pos-credit-required button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid #d97706;
+  border-radius: 8px;
+  background: #fff;
+  color: #9a4b08;
+  font-weight: 900;
+  white-space: nowrap;
+}
 @media (max-width: 600px) {
   .statement-panel {
     padding: 18px;

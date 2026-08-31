@@ -190,7 +190,107 @@ describe('PosPanel', () => {
     expect(screen.getByText(/Último pagamento/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Imprimir extrato 80 mm' })).toBeInTheDocument();
   });
+  it('hides lot traceability while the local PDV setting is disabled', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({
+      customers: [],
+      sellers: [],
+      paymentMethods: [{ id: 'cash-1', code: 'DIN', name: 'Dinheiro', type: 'cash' }],
+      locations: [{ id: 'location-1', code: 'LOJA', name: 'Loja' }],
+      products: [
+        {
+          id: 'product-1',
+          code: 'LOTE-1',
+          barcode: '789100000002',
+          description: 'Produto rastreado',
+          openPrice: false,
+          controlsLot: true,
+          controlsExpiry: true,
+          selectLotAtPos: true,
+          salePrice: '20',
+          availableQuantity: '5',
+          lots: [
+            {
+              id: 'lot-1',
+              lotNumber: 'L-2099',
+              expiresAt: '2099-12-31T00:00:00.000Z',
+              availableQuantity: '5',
+            },
+          ],
+        },
+      ],
+    } as never);
+    render(<PosPanel canDiscount={false} />);
+    const search = await screen.findByPlaceholderText('Código, código de barras ou descrição');
+    fireEvent.change(search, { target: { value: 'LOTE-1' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(await screen.findByText('Produto rastreado')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Selecione o lote' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Lote L-2099/)).not.toBeInTheDocument();
+  });
+  it('requires and links a customer before completing a credit sale', async () => {
+    let checkoutBody: Record<string, unknown> | null = null;
+    vi.mocked(apiRequest).mockImplementation((path, options) => {
+      if (path === '/sales/pos/checkout') {
+        const rawBody = options?.body;
+        checkoutBody = JSON.parse(typeof rawBody === 'string' ? rawBody : '{}') as Record<
+          string,
+          unknown
+        >;
+        return Promise.resolve({
+          orderId: 'order-1',
+          orderNumber: 'PED-1',
+          saleId: 'sale-1',
+          saleNumber: 'VEN-1',
+          total: '20.00',
+          itemCount: 1,
+          paymentCount: 1,
+          soldAt: '2026-08-31T12:00:00Z',
+          issuer: { tradeName: 'Loja', legalName: 'Loja Ltda.', taxId: '01027058000191' },
+        } as never);
+      }
+      return Promise.resolve({
+        customers: [{ id: 'customer-1', name: 'Ana Martins' }],
+        sellers: [],
+        paymentMethods: [
+          { id: 'cash-1', code: 'DIN', name: 'Dinheiro', type: 'cash' },
+          { id: 'credit-1', code: 'CRED', name: 'Crediário', type: 'credit_account' },
+        ],
+        locations: [{ id: 'location-1', code: 'LOJA', name: 'Loja' }],
+        products: [
+          {
+            id: 'product-1',
+            code: 'PROD-1',
+            barcode: '789100000009',
+            description: 'Produto no crediário',
+            openPrice: false,
+            controlsLot: false,
+            controlsExpiry: false,
+            selectLotAtPos: false,
+            salePrice: '20',
+            availableQuantity: '5',
+            lots: [],
+          },
+        ],
+      } as never);
+    });
+
+    render(<PosPanel canDiscount={false} />);
+    const search = await screen.findByPlaceholderText('Código, código de barras ou descrição');
+    fireEvent.change(search, { target: { value: 'PROD-1' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    fireEvent.keyDown(window, { key: 'F5' });
+    fireEvent.click(await screen.findByRole('button', { name: '2 Crediário' }));
+    expect(screen.getByText(/Identifique o cliente para lançar esta compra/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirmar venda (F8)' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Selecionar cliente (F2)' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Ana Martins.*Selecionar/ }));
+    fireEvent.keyDown(window, { key: 'F5' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar venda (F8)' }));
+    expect(await screen.findByRole('dialog', { name: 'Venda finalizada' })).toBeInTheDocument();
+    expect(checkoutBody).toMatchObject({ customerId: 'customer-1' });
+  });
   it('requires a valid lot without interrupting the sale to ask for a seller', async () => {
+    localStorage.setItem('softlab:pos-local-settings', JSON.stringify({ controlLotExpiry: true }));
     vi.mocked(apiRequest).mockResolvedValue({
       settings: {
         defaultCustomerId: null,

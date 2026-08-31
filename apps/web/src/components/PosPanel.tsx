@@ -98,6 +98,7 @@ export function PosPanel({
   const [productListOpen, setProductListOpen] = useState(false);
   const [productListQuery, setProductListQuery] = useState('');
   const [localSettingsOpen, setLocalSettingsOpen] = useState(false);
+  const [lotTrackingEnabled, setLotTrackingEnabled] = useState(readLotTrackingSetting);
   const [certificateOpen, setCertificateOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentDraft[]>([
     { key: 1, paymentMethodId: '', amount: '0.00', installments: 1 },
@@ -170,6 +171,15 @@ export function PosPanel({
       'credit_account',
   );
 
+  useEffect(() => {
+    function settingsSaved(event: Event) {
+      const detail = (event as CustomEvent<{ controlLotExpiry?: boolean }>).detail;
+      setLotTrackingEnabled(detail?.controlLotExpiry === true);
+      if (detail?.controlLotExpiry !== true) setLotSelection(null);
+    }
+    window.addEventListener('softlab:pos-settings-saved', settingsSaved);
+    return () => window.removeEventListener('softlab:pos-settings-saved', settingsSaved);
+  }, []);
   useEffect(() => {
     void (async () => {
       if (forcedOffline) {
@@ -302,6 +312,7 @@ export function PosPanel({
   }, [paymentOpen]);
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
+      if (receipt && ['Escape', 'F8', 'F9'].includes(event.key)) return;
       if (event.key === 'F1') {
         event.preventDefault();
         setHelpOpen(true);
@@ -482,7 +493,7 @@ export function PosPanel({
     setProductListOpen(false);
     if (product.salePrice === null && !product.openPrice)
       return setError('Produto sem preço vigente');
-    if (product.selectLotAtPos === true) {
+    if (lotTrackingEnabled && product.selectLotAtPos === true) {
       const validLots = product.lots.filter(
         (lot) => !isExpired(lot.expiresAt) && Number(lot.availableQuantity) > 0,
       );
@@ -535,6 +546,13 @@ export function PosPanel({
     event.preventDefault();
     if (!cart.length) return setError('Adicione ao menos um produto');
     if (!locationId) return setError('Configure a movimentação interna do PDV');
+    if (usesCredit && !customerId) {
+      setPaymentOpen(false);
+      setCustomerCreateOpen(false);
+      setCustomerPickerOpen(true);
+      requestAnimationFrame(() => customerRef.current?.focus());
+      return setError('Selecione o cliente para concluir a venda no crediário');
+    }
     if (Math.abs(paid - total) > 0.009)
       return setError('Os pagamentos devem fechar exatamente o total da venda');
     const form = new FormData(event.currentTarget);
@@ -551,6 +569,7 @@ export function PosPanel({
         freight,
         notes: saleNotes.trim() || null,
         creditDueDate: field(form, 'creditDueDate'),
+        controlLotExpiryAtPos: lotTrackingEnabled,
         items: cart.map((item) => ({
           productId: item.id,
           quantity: item.quantity,
@@ -603,6 +622,7 @@ export function PosPanel({
           freight,
           notes: saleNotes.trim() || null,
           creditDueDate: field(form, 'creditDueDate'),
+          controlLotExpiryAtPos: lotTrackingEnabled,
           items: cart.map((item) => ({
             productId: item.id,
             quantity: item.quantity,
@@ -1558,7 +1578,7 @@ export function PosPanel({
                 <span>
                   <strong>{item.code}</strong>
                   {item.description}
-                  {item.lotNumber && (
+                  {lotTrackingEnabled && item.lotNumber && (
                     <small>
                       Lote {item.lotNumber}
                       {item.lotExpiresAt ? ` · val. ${date(item.lotExpiresAt)}` : ''}
@@ -1868,15 +1888,33 @@ export function PosPanel({
                   <strong>{money(Math.max(0, total - paid))}</strong>
                 </div>
                 {usesCredit && (
-                  <label>
-                    Vencimento do crediário
-                    <input
-                      name="creditDueDate"
-                      type="date"
-                      required
-                      defaultValue={futureDate(30)}
-                    />
-                  </label>
+                  <>
+                    {!customerId && (
+                      <div className="pos-credit-required" role="alert">
+                        <span>
+                          Identifique o cliente para lançar esta compra no contas a receber.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPaymentOpen(false);
+                            openCustomerPicker();
+                          }}
+                        >
+                          Selecionar cliente (F2)
+                        </button>
+                      </div>
+                    )}
+                    <label>
+                      Vencimento do crediário
+                      <input
+                        name="creditDueDate"
+                        type="date"
+                        required
+                        defaultValue={futureDate(30)}
+                      />
+                    </label>
+                  </>
                 )}
                 <label>
                   Observações
@@ -1888,7 +1926,8 @@ export function PosPanel({
                     busy ||
                     !cart.length ||
                     Math.abs(total - paid) > 0.009 ||
-                    received + 0.009 < total
+                    received + 0.009 < total ||
+                    (usesCredit && !customerId)
                   }
                 >
                   {busy ? 'Finalizando…' : 'Confirmar venda (F8)'}
@@ -1990,6 +2029,17 @@ function randomId() {
 }
 function message(reason: unknown) {
   return reason instanceof Error ? reason.message : 'Falha no PDV';
+}
+
+function readLotTrackingSetting() {
+  try {
+    const settings = JSON.parse(localStorage.getItem('softlab:pos-local-settings') ?? '{}') as {
+      controlLotExpiry?: boolean;
+    };
+    return settings.controlLotExpiry === true;
+  } catch {
+    return false;
+  }
 }
 
 const POS_HELP_ACTIONS = [

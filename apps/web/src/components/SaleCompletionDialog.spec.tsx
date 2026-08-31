@@ -49,7 +49,8 @@ describe('SaleCompletionDialog', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('prints company data and a QR Code on the F9 order receipt', async () => {
-    render(<SaleCompletionDialog receipt={receipt} onNext={vi.fn()} />);
+    const onNext = vi.fn();
+    render(<SaleCompletionDialog receipt={receipt} onNext={onNext} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Imprimir pedido/ }));
 
@@ -61,6 +62,7 @@ describe('SaleCompletionDialog', () => {
     expect(html.indexOf('Mercado Modelo')).toBeLessThan(html.indexOf('Comercial Modelo'));
     expect(html).toContain('PEDIDO DE VENDA');
     expect(html).toContain('QR Code do pedido');
+    expect(onNext).toHaveBeenCalledOnce();
   });
 
   it('uses the same company header on the F8 DANFE NFC-e', async () => {
@@ -73,7 +75,8 @@ describe('SaleCompletionDialog', () => {
       qrCodeUrl: 'https://sefaz.example/nfce/1',
       total: '32.90',
     } as never);
-    render(<SaleCompletionDialog receipt={receipt} onNext={vi.fn()} />);
+    const onNext = vi.fn();
+    render(<SaleCompletionDialog receipt={receipt} onNext={onNext} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Emitir NFC-e/ }));
 
@@ -83,5 +86,13 @@ describe('SaleCompletionDialog', () => {
     expect(html).toContain('Comercial Modelo do Brasil Ltda.');
     expect(html).toContain('CNPJ 01.027.058/0001-91');
     expect(html).toContain('DANFE NFC-e');
+    expect(onNext).toHaveBeenCalledOnce();
+  });
+
+  it('returns to a new sale when the operator presses Escape', () => {
+    const onNext = vi.fn();
+    render(<SaleCompletionDialog receipt={receipt} onNext={onNext} />);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onNext).toHaveBeenCalledOnce();
   });
 });

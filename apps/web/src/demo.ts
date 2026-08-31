@@ -981,6 +981,78 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
       ],
       total: '33.40',
     };
+  if (path === '/sales/pos/checkout' && method !== 'GET') {
+    const body = demoBody(requestBody);
+    const customerId = typeof body.customerId === 'string' ? body.customerId : null;
+    const payments = Array.isArray(body.payments)
+      ? (body.payments as Array<{ paymentMethodId?: unknown; amount?: unknown }>)
+      : [];
+    const items = Array.isArray(body.items)
+      ? (body.items as Array<{ productId?: unknown; quantity?: unknown; unitPrice?: unknown }>)
+      : [];
+    const creditAmount = payments
+      .filter(({ paymentMethodId }) => paymentMethodId === '018f4f12-2222-7222-8222-000000000303')
+      .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+    if (creditAmount > 0 && !customerId)
+      throw new Error('Selecione o cliente para concluir a venda no crediário');
+    const total = payments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+    const soldAt = new Date().toISOString();
+    const saleId = crypto.randomUUID();
+    const saleNumber = `VEN-DEMO-${String(Date.now()).slice(-6)}`;
+    if (creditAmount > 0 && customerId) {
+      const customer = demoPosCustomers.find(({ id }) => id === customerId);
+      const statement =
+        demoStatements[customerId] ?? emptyStatement(customerId, customer?.name ?? 'Cliente');
+      const productData: Record<string, { description: string; price: number }> = {
+        p1: { description: 'Café Especial 500 g', price: 32.9 },
+        p2: { description: 'Leite Integral 1 L', price: 6.49 },
+        p3: { description: 'Pão de Queijo Artesanal', price: 12.5 },
+      };
+      const couponItems = items.map((item) => {
+        const product = productData[String(item.productId)] ?? {
+          description: 'Produto',
+          price: Number(item.unitPrice ?? 0),
+        };
+        const quantity = Number(item.quantity ?? 0);
+        const unitPrice = Number(item.unitPrice ?? product.price);
+        return {
+          description: product.description,
+          quantity: quantity.toFixed(3),
+          unitPrice: unitPrice.toFixed(2),
+          total: (quantity * unitPrice).toFixed(2),
+        };
+      });
+      statement.coupons.unshift({
+        saleId,
+        saleNumber,
+        soldAt,
+        total: total.toFixed(2),
+        creditAmount: creditAmount.toFixed(2),
+        amountPaid: '0.00',
+        amountDue: creditAmount.toFixed(2),
+        receivableId: crypto.randomUUID(),
+        items: couponItems,
+      });
+      statement.totalPurchased = (Number(statement.totalPurchased) + total).toFixed(2);
+      statement.totalDue = (Number(statement.totalDue) + creditAmount).toFixed(2);
+      demoStatements[customerId] = statement;
+    }
+    return {
+      orderId: crypto.randomUUID(),
+      orderNumber: `PED-DEMO-${String(Date.now()).slice(-6)}`,
+      saleId,
+      saleNumber,
+      total: total.toFixed(2),
+      itemCount: items.length,
+      paymentCount: payments.length,
+      soldAt,
+      issuer: {
+        tradeName: 'ERP Híbrido Mercado',
+        legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.',
+        taxId: '01027058000191',
+      },
+    };
+  }
   if (path.includes('/checkout'))
     return {
       orderId: '018f4f12-2222-7222-8222-000000000501',

@@ -37,8 +37,10 @@ export function SaleCompletionDialog({
   const [issuing, setIssuing] = useState(false);
   const [error, setError] = useState('');
   async function fiscal() {
-    if (receipt.offlinePending)
-      return setError('A NFC-e ficará disponível após a venda sincronizar com o servidor.');
+    if (receipt.offlinePending) {
+      setError('A NFC-e ficará disponível após a venda sincronizar com o servidor.');
+      return false;
+    }
     setIssuing(true);
     setError('');
     try {
@@ -47,11 +49,20 @@ export function SaleCompletionDialog({
         body: '{}',
       });
       await print80mm(receipt, document);
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Não foi possível emitir a NFC-e');
+      return false;
     } finally {
       setIssuing(false);
     }
+  }
+  async function fiscalAndNext() {
+    if (await fiscal()) onNext();
+  }
+  async function orderAndNext() {
+    await print80mm(receipt);
+    onNext();
   }
   useEffect(() => {
     function shortcut(event: KeyboardEvent) {
@@ -61,11 +72,11 @@ export function SaleCompletionDialog({
       }
       if (event.key === 'F8') {
         event.preventDefault();
-        void fiscal();
+        void fiscalAndNext();
       }
       if (event.key === 'F9') {
         event.preventDefault();
-        void print80mm(receipt);
+        void orderAndNext();
       }
     }
     window.addEventListener('keydown', shortcut);
@@ -94,7 +105,7 @@ export function SaleCompletionDialog({
         <div className="sale-completion-actions">
           <button
             className="primary"
-            onClick={() => void fiscal()}
+            onClick={() => void fiscalAndNext()}
             disabled={issuing || receipt.offlinePending}
           >
             <kbd>F8</kbd>
@@ -103,7 +114,7 @@ export function SaleCompletionDialog({
               <small>Cupom fiscal 80 mm</small>
             </span>
           </button>
-          <button className="quiet" onClick={() => void print80mm(receipt)}>
+          <button className="quiet" onClick={() => void orderAndNext()}>
             <kbd>F9</kbd>
             <span>
               Imprimir pedido<small>Documento não fiscal 80 mm</small>

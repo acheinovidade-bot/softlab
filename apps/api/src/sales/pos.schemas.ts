@@ -11,6 +11,7 @@ export const posCheckoutSchema = z
     freight: money.default(0),
     notes: z.string().trim().max(2000).nullable().default(null),
     creditDueDate: z.string().date().nullable().default(null),
+    controlLotExpiryAtPos: z.boolean().default(false),
     items: z
       .array(
         z.object({

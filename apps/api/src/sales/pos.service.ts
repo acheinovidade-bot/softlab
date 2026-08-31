@@ -362,7 +362,7 @@ export class PosService {
         throw new BadRequestException(`Desconto maior que o item ${product.description}`);
       if (price?.minimumPrice && gross.sub(discount).div(item.quantity).lt(price.minimumPrice))
         throw new ConflictException(`Preço abaixo do mínimo para ${product.description}`);
-      if (product.selectLotAtPos && !item.lotId)
+      if (data.controlLotExpiryAtPos && product.selectLotAtPos && !item.lotId)
         throw new BadRequestException(`Selecione o lote de ${product.description}`);
       if (item.lotId && !product.controlsLot)
         throw new BadRequestException(`${product.description} não controla lote`);

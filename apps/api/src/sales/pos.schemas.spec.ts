@@ -15,6 +15,7 @@ describe('POS checkout schema', () => {
     expect(parsed.items[0]).toMatchObject({ quantity: 2, unitPrice: null, discount: 1.5 });
     expect(parsed.items[0]?.lotId).toBeNull();
     expect(parsed.payments[0]?.amount).toBe(18.5);
+    expect(parsed.controlLotExpiryAtPos).toBe(false);
   });
 
   it('rejects repeated products and payment methods', () => {
