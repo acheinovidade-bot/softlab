@@ -490,7 +490,6 @@ export function AdminShell({
               canReadCredit={user.permissions.includes('sales.credit.read')}
               canReceiveCredit={user.permissions.includes('sales.credit.receive')}
               offlineScope={`${user.companyId}:${user.branchId}`}
-              onOpenSettings={() => setSection('settings')}
               onNavigate={(destination) => setSection(destination)}
               onExit={() => setSection('dashboard')}
               requireCashOpening={user.permissions.includes('finance.cash.operate')}

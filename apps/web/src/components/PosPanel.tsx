@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PosCheckoutResult, PosProduct } from '@erp/contracts';
 import { apiRequest } from '../api';
 import { CustomerStatementPanel } from './CustomerStatementPanel';
+import { PosCertificateDialog } from './PosCertificateDialog';
 import { PosSettingsDialog } from './PosSettingsDialog';
 import { SaleCompletionDialog, type SaleReceipt } from './SaleCompletionDialog';
 import {
@@ -71,7 +72,6 @@ export function PosPanel({
   canReadCredit = false,
   canReceiveCredit = false,
   offlineScope = 'default',
-  onOpenSettings,
   onNavigate,
   onExit,
   requireCashOpening = false,
@@ -80,7 +80,6 @@ export function PosPanel({
   canReadCredit?: boolean;
   canReceiveCredit?: boolean;
   offlineScope?: string;
-  onOpenSettings?: () => void;
   onNavigate?: (destination: PosDestination) => void;
   onExit?: () => void;
   requireCashOpening?: boolean;
@@ -99,6 +98,7 @@ export function PosPanel({
   const [productListOpen, setProductListOpen] = useState(false);
   const [productListQuery, setProductListQuery] = useState('');
   const [localSettingsOpen, setLocalSettingsOpen] = useState(false);
+  const [certificateOpen, setCertificateOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentDraft[]>([
     { key: 1, paymentMethodId: '', amount: '0.00', installments: 1 },
   ]);
@@ -352,9 +352,9 @@ export function PosPanel({
         event.preventDefault();
         setNotesOpen(true);
       }
-      if (event.key === 'F10' && onOpenSettings) {
+      if (event.key === 'F10') {
         event.preventDefault();
-        onOpenSettings();
+        setLocalSettingsOpen(true);
       }
       if (event.key === 'Home') {
         event.preventDefault();
@@ -362,7 +362,8 @@ export function PosPanel({
       }
       if (event.ctrlKey && event.key === 'End') {
         event.preventDefault();
-        onNavigate?.('customers');
+        setCustomerCreateOpen(true);
+        setCustomerPickerOpen(true);
       }
       if (event.ctrlKey && event.key.toLowerCase() === 'r') {
         event.preventDefault();
@@ -370,7 +371,7 @@ export function PosPanel({
       }
       if (event.ctrlKey && event.altKey && event.key === '=') {
         event.preventDefault();
-        onOpenSettings?.();
+        setCertificateOpen(true);
       }
       if (!event.ctrlKey && !event.altKey && event.key === '=') {
         event.preventDefault();
@@ -422,7 +423,8 @@ export function PosPanel({
           sellerPickerOpen ||
           notesOpen ||
           productListOpen ||
-          localSettingsOpen)
+          localSettingsOpen ||
+          certificateOpen)
       ) {
         setHelpOpen(false);
         setPaymentOpen(false);
@@ -432,12 +434,9 @@ export function PosPanel({
         setNotesOpen(false);
         setProductListOpen(false);
         setLocalSettingsOpen(false);
+        setCertificateOpen(false);
       } else if (event.key === 'Escape' && cashOpening) onExit?.();
-      if (
-        paymentOpen &&
-        event.target !== receivedAmountRef.current &&
-        /^[1-9]$/.test(event.key)
-      ) {
+      if (paymentOpen && event.target !== receivedAmountRef.current && /^[1-9]$/.test(event.key)) {
         const method = lookup.paymentMethods[Number(event.key) - 1];
         if (method) {
           event.preventDefault();
@@ -454,7 +453,6 @@ export function PosPanel({
   }, [
     cart.length,
     receipt,
-    onOpenSettings,
     onNavigate,
     onExit,
     helpOpen,
@@ -465,6 +463,7 @@ export function PosPanel({
     notesOpen,
     productListOpen,
     localSettingsOpen,
+    certificateOpen,
     cashOpening,
     lookup.paymentMethods,
     total,
@@ -695,7 +694,10 @@ export function PosPanel({
           });
           return {
             ...product,
-            availableQuantity: Math.max(0, Number(product.availableQuantity) - sold.quantity).toString(),
+            availableQuantity: Math.max(
+              0,
+              Number(product.availableQuantity) - sold.quantity,
+            ).toString(),
             lots,
           };
         }),
@@ -782,10 +784,13 @@ export function PosPanel({
     setHelpOpen(false);
     if (action === 'hold') holdCurrentSale();
     else if (action === 'held') setHeldSalesOpen(true);
-    else if (action === 'customers') onNavigate?.('customers');
-    else if (action === 'cancel') cancelCurrentSale();
+    else if (action === 'customers') {
+      setCustomerCreateOpen(true);
+      setCustomerPickerOpen(true);
+    } else if (action === 'cancel') cancelCurrentSale();
     else if (action === 'remove') setCart((current) => current.slice(0, -1));
     else if (action === 'settings') setLocalSettingsOpen(true);
+    else if (action === 'certificate') setCertificateOpen(true);
     else if (action === 'cash') onNavigate?.('cash');
     else if (action === 'payment') setPaymentOpen(true);
     else if (action === 'quick') formRef.current?.requestSubmit();
@@ -1453,8 +1458,7 @@ export function PosPanel({
         <aside className="pos-checkout">
           <div className="pos-sale-context">
             <span>
-              Vendedor:{' '}
-              <strong>Consumidor final</strong>
+              Vendedor: <strong>Consumidor final</strong>
             </span>
             {customerId && (
               <span>
@@ -1631,7 +1635,9 @@ export function PosPanel({
                           );
                           return;
                         }
-                        if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key))
+                        if (
+                          !['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key)
+                        )
                           return;
                         event.preventDefault();
                         const direction = ['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1;
@@ -1846,6 +1852,7 @@ export function PosPanel({
         </button>
       </nav>
       {localSettingsOpen && <PosSettingsDialog onClose={() => setLocalSettingsOpen(false)} />}
+      {certificateOpen && <PosCertificateDialog onClose={() => setCertificateOpen(false)} />}
       {statementOpen && customerId && (
         <CustomerStatementPanel
           customerId={customerId}
@@ -1915,7 +1922,7 @@ const POS_HELP_ACTIONS = [
   { label: 'Cadastrar cliente', shortcut: 'CTRL + END', action: 'customers' },
   { label: 'Cancelar cupom', shortcut: 'F6', action: 'cancel' },
   { label: 'Cancelar item', shortcut: 'DELETE', action: 'remove' },
-  { label: 'Configurar Certificado', shortcut: 'CTRL + ALT + =', action: 'settings' },
+  { label: 'Configurar Certificado', shortcut: 'CTRL + ALT + =', action: 'certificate' },
   { label: 'Fechar caixa', shortcut: '=', action: 'cash' },
   { label: 'Finalizar cupom', shortcut: 'F5', action: 'payment' },
   { label: 'Finalizar rápido', shortcut: 'F8', action: 'quick' },

@@ -5322,3 +5322,130 @@ select:focus {
 .food-payment button {
   background: linear-gradient(135deg, #e8620d, #f97316);
 }
+
+.pos-certificate-modal {
+  width: min(690px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid #b9cbe2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgb(10 37 69 / 30%);
+}
+.pos-certificate-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #dce6f1;
+  background: linear-gradient(120deg, #f7fbff, #edf6ff);
+}
+.pos-certificate-modal h2 {
+  margin: 3px 0 0;
+  color: #0a2540;
+}
+.pos-certificate-modal .eyebrow {
+  color: #087ea4;
+}
+.pos-certificate-modal > header .quiet,
+.pos-certificate-modal footer .quiet {
+  border: 1px solid #c7d5e5;
+  background: #fff;
+  color: #26445f;
+}
+.pos-certificate-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 20px 24px 0;
+}
+.pos-certificate-modes button {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid #c9d8e8;
+  border-radius: 11px;
+  background: #f8fbfe;
+  color: #24445f;
+  text-align: left;
+  cursor: pointer;
+}
+.pos-certificate-modes button.active {
+  border-color: #0784b5;
+  outline: 2px solid rgb(8 132 181 / 14%);
+  background: #eaf8fd;
+  color: #064e6a;
+}
+.pos-certificate-modes small {
+  color: #61758a;
+}
+.pos-certificate-modal form {
+  display: grid;
+  gap: 16px;
+  padding: 20px 24px 24px;
+}
+.pos-certificate-modal form > label {
+  display: grid;
+  gap: 7px;
+  color: #213f5b;
+  font-weight: 800;
+}
+.pos-certificate-modal input {
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid #b9cadb;
+  border-radius: 8px;
+  background: #fff;
+  color: #132f49;
+  font: inherit;
+}
+.pos-certificate-modal input:focus {
+  border-color: #0784b5;
+  outline: 3px solid rgb(8 132 181 / 14%);
+}
+.pos-certificate-file small {
+  color: #61758a;
+  font-weight: 500;
+}
+.pos-certificate-security {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid #c6e8dc;
+  border-radius: 9px;
+  background: #effaf6;
+  color: #165d49;
+  font-size: 13px;
+}
+.pos-certificate-message {
+  margin: 0;
+  color: #a23b20;
+  font-weight: 800;
+}
+.pos-certificate-message.success {
+  color: #16744f;
+}
+.pos-certificate-modal footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 2px;
+}
+.pos-certificate-modal footer button {
+  min-height: 42px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-weight: 900;
+}
+.pos-certificate-modal footer .primary {
+  border: 1px solid #087ea4;
+  background: linear-gradient(135deg, #086788, #0798c8);
+  color: #fff;
+}
+@media (max-width: 600px) {
+  .pos-certificate-modes {
+    grid-template-columns: 1fr;
+  }
+  .pos-certificate-modal footer {
+    flex-direction: column-reverse;
+  }
+}

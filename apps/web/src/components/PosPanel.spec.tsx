@@ -116,6 +116,40 @@ describe('PosPanel', () => {
     expect(await screen.findByText('João Silva')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Identificar cliente' })).not.toBeInTheDocument();
   });
+  it('keeps customer and certificate actions inside the PDV', async () => {
+    vi.mocked(apiRequest).mockResolvedValue({
+      customers: [],
+      sellers: [],
+      paymentMethods: [],
+      locations: [{ id: 'location-1', code: 'LOJA', name: 'Loja' }],
+      products: [],
+    } as never);
+    const navigate = vi.fn();
+    render(<PosPanel canDiscount={false} onNavigate={navigate} />);
+
+    fireEvent.keyDown(window, { key: 'F1' });
+    fireEvent.click(await screen.findByRole('button', { name: /Cadastrar cliente.*CTRL \+ END/ }));
+    expect(screen.getByRole('dialog', { name: 'Identificar cliente' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Nome')).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(window, { key: 'F1' });
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Configurar Certificado.*CTRL \+ ALT \+ =/ }),
+    );
+    expect(screen.getByRole('dialog', { name: 'Certificado digital' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Arquivo do certificado/)).toHaveAttribute(
+      'accept',
+      '.pfx,.p12,application/x-pkcs12',
+    );
+    expect(screen.getByLabelText('Senha do certificado')).toHaveAttribute('type', 'password');
+
+    fireEvent.click(screen.getByRole('tab', { name: /Token A3/ }));
+    expect(screen.getByLabelText('Token ou dispositivo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Senha/PIN do token')).toHaveAttribute('type', 'password');
+    expect(navigate).not.toHaveBeenCalled();
+  });
   it('requires a valid lot without interrupting the sale to ask for a seller', async () => {
     vi.mocked(apiRequest).mockResolvedValue({
       settings: {
