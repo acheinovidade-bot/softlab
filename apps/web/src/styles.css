@@ -5089,3 +5089,236 @@ th {
     grid-column: auto;
   }
 }
+
+/* Identidade SoftLab: tecnologia no ERP e operação acolhedora no Food Service. */
+:root {
+  color: #12243f;
+  background: #f2f7fc;
+  --tech-navy: #071a35;
+  --tech-blue: #1769e0;
+  --tech-cyan: #06b6d4;
+  --tech-soft: #eaf4ff;
+  --food-forest: #14532d;
+  --food-green: #16a34a;
+  --food-orange: #f97316;
+  --food-cream: #fffaf2;
+}
+
+.app-layout {
+  background: linear-gradient(145deg, #f5f9fd 0%, #edf5fc 100%);
+}
+.sidebar {
+  background:
+    radial-gradient(circle at 5% 0%, rgb(6 182 212 / 30%), transparent 29%),
+    radial-gradient(circle at 100% 55%, rgb(37 99 235 / 18%), transparent 38%),
+    linear-gradient(180deg, #0a2347 0%, #06162d 100%);
+  box-shadow: 10px 0 34px rgb(7 26 53 / 16%);
+}
+.logo {
+  background: linear-gradient(145deg, #22d3ee, #2563eb);
+  box-shadow: 0 10px 26px rgb(6 182 212 / 28%);
+}
+.sidebar-title span,
+.sidebar-menu h2,
+.sidebar-footer,
+.menu-chevron,
+.menu-indicator {
+  color: #8fb3d9;
+}
+.sidebar nav button {
+  color: #c0d5ec;
+}
+.sidebar nav button:hover,
+.sidebar nav button.active {
+  background: linear-gradient(90deg, rgb(23 105 224 / 34%), rgb(6 182 212 / 14%));
+}
+.sidebar nav button.active .menu-indicator,
+.nav-icon {
+  color: #4bd8ef;
+}
+.sidebar nav .sidebar-menu-toggle:hover,
+.sidebar nav .sidebar-menu-toggle.has-active {
+  background: rgb(37 99 235 / 20%);
+}
+.sidebar nav .sidebar-menu-toggle.has-active {
+  box-shadow: inset 3px 0 #22d3ee;
+}
+.sidebar-menu-items {
+  border-left-color: rgb(75 216 239 / 24%);
+}
+.topbar {
+  border-bottom-color: #d5e5f4;
+  background: rgb(250 253 255 / 94%);
+  box-shadow: 0 8px 28px rgb(31 78 121 / 5%);
+}
+.branch-chip {
+  border-color: #cfe2f5;
+  color: #31587e;
+  background: #f4f9ff;
+}
+.user-chip > span {
+  background: linear-gradient(145deg, #1689e8, #174ea6);
+}
+.primary {
+  background: linear-gradient(135deg, #1769e0, #078baa);
+  box-shadow: 0 8px 20px rgb(23 105 224 / 18%);
+}
+.primary:hover {
+  background: linear-gradient(135deg, #105abd, #05748e);
+}
+.quiet {
+  color: #31587e;
+  background: #e9f2fb;
+}
+.link {
+  color: #1769e0;
+}
+input:focus,
+select:focus {
+  border-color: #2687e8;
+  box-shadow: 0 0 0 3px rgb(38 135 232 / 16%);
+}
+
+/* PDV no mesmo universo visual tecnológico. */
+.pos-screen {
+  --pos-purple: #155cc4;
+  --pos-orange: #06a6c7;
+}
+.pos-screen > .pos-header {
+  background: linear-gradient(105deg, #071a35 0%, #155cc4 55%, #06b6d4 100%);
+  box-shadow: 0 8px 26px rgb(7 26 53 / 18%);
+}
+.pos-brand-mark,
+.pos-mode-switch button.active {
+  color: #155cc4;
+}
+.pos-help-button {
+  color: #078baa;
+}
+.pos-screen .pos-search input {
+  border-color: #4da2f2;
+  box-shadow: 0 0 0 3px rgb(77 162 242 / 9%);
+}
+.pos-entry-metrics span,
+.pos-entry-metrics strong,
+.pos-sale-context strong,
+.pos-party-modal h2,
+.pos-product-modal h2 {
+  color: #155cc4;
+}
+.pos-open-payment,
+.pos-finish,
+.pos-bottom-actions button.featured {
+  background: linear-gradient(135deg, #155cc4, #078baa);
+  color: #fff;
+}
+.pos-payment-adjustments button {
+  border-color: #149fc1;
+  background: #078baa;
+}
+.pos-payment-method-index button.selected,
+.pos-settings-dialog > footer .primary {
+  border-color: #1769e0;
+  background: #1769e0;
+}
+
+/* Food Service: verde para operação e laranja para ação/consumo. */
+.food-screen {
+  --line: #d9e8dc;
+  --muted: #65766a;
+  --shadow: 0 18px 45px rgb(20 83 45 / 10%);
+  margin: -10px;
+  padding: 26px;
+  border: 1px solid #e3ece4;
+  border-radius: 24px;
+  color: #183b27;
+  background:
+    radial-gradient(circle at 100% 0%, rgb(249 115 22 / 11%), transparent 30%),
+    linear-gradient(145deg, #fffdf8 0%, #f4fbf6 100%);
+}
+.food-header {
+  padding: 4px 2px 17px;
+  border-bottom: 1px solid #dce9df;
+}
+.food-header .eyebrow {
+  color: #ea6c11;
+}
+.food-header h1 {
+  color: #14532d;
+}
+.food-legend {
+  border-color: #d6e6d9;
+  background: rgb(255 255 255 / 86%);
+  box-shadow: 0 8px 24px rgb(20 83 45 / 7%);
+}
+.food-channels button {
+  border-color: #d3e5d7;
+  color: #315e3e;
+  background: #fff;
+}
+.food-channels .active {
+  border-color: #15803d;
+  background: linear-gradient(135deg, #15803d, #16a34a);
+  box-shadow: 0 8px 18px rgb(22 163 74 / 20%);
+}
+.food-channel-workspace,
+.food-drawer {
+  border-color: #d7e6da;
+  box-shadow: 0 16px 40px rgb(20 83 45 / 9%);
+}
+.food-channel-orders > button {
+  border-color: #d8e7db;
+  color: #214b30;
+  background: #fbfefb;
+}
+.food-channel-orders > button:hover,
+.food-channel-orders > button.active {
+  border-color: #59b875;
+  background: #edf9f0;
+  box-shadow: inset 4px 0 #16a34a;
+}
+.food-channel-orders b,
+.food-add-table summary,
+.food-tabs .new {
+  color: #15803d;
+}
+.restaurant-table {
+  border-color: #d6e6da;
+  color: #183b27;
+  background: linear-gradient(155deg, #fff, #eff8f1);
+  box-shadow: 0 9px 24px rgb(20 83 45 / 7%);
+}
+.restaurant-table.occupied {
+  border-color: #fb923c;
+  background: linear-gradient(155deg, #fff8ee, #ffedd5);
+  box-shadow: 0 10px 25px rgb(249 115 22 / 15%);
+}
+.restaurant-table.selected {
+  border-color: #16a34a;
+  outline-color: rgb(22 163 74 / 20%);
+}
+.restaurant-table b {
+  color: #c5540a;
+}
+.food-tabs > div:first-child button.active {
+  border-color: #16a34a;
+  color: #14532d;
+  background: #eaf8ee;
+}
+.food-launch {
+  border: 1px solid #d8e8dc;
+  background: #f1f9f3;
+}
+.food-summary {
+  background: linear-gradient(135deg, #14532d, #15803d);
+  box-shadow: 0 9px 22px rgb(20 83 45 / 20%);
+}
+.food-summary-backdrop {
+  background: rgb(7 35 20 / 65%);
+}
+.food-summary-sheet footer {
+  background: linear-gradient(120deg, #14532d, #15803d);
+}
+.food-payment button {
+  background: linear-gradient(135deg, #e8620d, #f97316);
+}
