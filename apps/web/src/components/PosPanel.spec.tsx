@@ -14,7 +14,10 @@ describe('PosPanel', () => {
     vi.mocked(apiRequest).mockResolvedValue({
       customers: [],
       sellers: [{ id: 'seller-1', name: 'Operador' }],
-      paymentMethods: [{ id: 'cash-1', code: 'DIN', name: 'Dinheiro', type: 'cash' }],
+      paymentMethods: [
+        { id: 'cash-1', code: 'DIN', name: 'Dinheiro', type: 'cash' },
+        { id: 'pix-1', code: 'PIX', name: 'PIX', type: 'pix' },
+      ],
       locations: [{ id: 'location-1', code: 'LOJA', name: 'Loja' }],
       products: [
         {
@@ -66,6 +69,10 @@ describe('PosPanel', () => {
     fireEvent.change(received, { target: { value: '100' } });
     fireEvent.keyDown(received, { key: 'Enter' });
     expect(screen.getByRole('button', { name: '1 Dinheiro' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('button', { name: '1 Dinheiro' }), { key: 'ArrowDown' });
+    expect(screen.getByRole('button', { name: '2 PIX' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('button', { name: '2 PIX' }), { key: 'Enter' });
+    expect(screen.getByRole('button', { name: '2 PIX' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('R$ 5,50')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Trabalhar online' })).toHaveAttribute(
       'aria-pressed',
@@ -159,6 +166,9 @@ describe('PosPanel', () => {
     } as never);
     render(<PosPanel canDiscount={false} />);
     const search = await screen.findByPlaceholderText('Código, código de barras ou descrição');
+    fireEvent.keyDown(window, { key: 'F3' });
+    await screen.findByRole('button', { name: /AUTO-1.*Produto com lote automático/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
     fireEvent.change(search, { target: { value: 'AUTO-1' } });
     expect(await screen.findByText('Produto com lote automático')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Selecione o lote' })).not.toBeInTheDocument();

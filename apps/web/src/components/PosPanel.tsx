@@ -141,7 +141,7 @@ export function PosPanel({
   const searchRef = useRef<HTMLInputElement>(null);
   const productListRef = useRef<HTMLInputElement>(null);
   const receivedAmountRef = useRef<HTMLInputElement>(null);
-  const firstPaymentMethodRef = useRef<HTMLButtonElement>(null);
+  const paymentMethodRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const formRef = useRef<HTMLFormElement>(null);
   const customerRef = useRef<HTMLInputElement>(null);
   const cashFormRef = useRef<HTMLFormElement>(null);
@@ -1580,7 +1580,10 @@ export function PosPanel({
                       onKeyDown={(event) => {
                         if (event.key === 'Enter') {
                           event.preventDefault();
-                          firstPaymentMethodRef.current?.focus();
+                          const selectedIndex = lookup.paymentMethods.findIndex(
+                            ({ id }) => id === payments[0]?.paymentMethodId,
+                          );
+                          paymentMethodRefs.current[Math.max(0, selectedIndex)]?.focus();
                         }
                       }}
                     />
@@ -1611,8 +1614,32 @@ export function PosPanel({
                     <button
                       type="button"
                       key={method.id}
-                      ref={index === 0 ? firstPaymentMethodRef : undefined}
+                      ref={(node) => {
+                        paymentMethodRefs.current[index] = node;
+                      }}
                       className={payments[0]?.paymentMethodId === method.id ? 'selected' : ''}
+                      aria-pressed={payments[0]?.paymentMethodId === method.id}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setPayments((current) =>
+                            current.map((item, paymentIndex) =>
+                              paymentIndex === 0
+                                ? { ...item, paymentMethodId: method.id, installments: 1 }
+                                : item,
+                            ),
+                          );
+                          return;
+                        }
+                        if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(event.key))
+                          return;
+                        event.preventDefault();
+                        const direction = ['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1;
+                        const nextIndex =
+                          (index + direction + lookup.paymentMethods.length) %
+                          lookup.paymentMethods.length;
+                        paymentMethodRefs.current[nextIndex]?.focus();
+                      }}
                       onClick={() =>
                         setPayments((current) =>
                           current.map((item, paymentIndex) =>
