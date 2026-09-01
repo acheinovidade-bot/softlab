@@ -427,7 +427,18 @@ export class PosService {
         const now = new Date();
         const orderId = uuidV7();
         const saleId = uuidV7();
-        const orderNumber = `${origin === 'food' ? 'FOOD' : 'PDV'}-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${orderId.slice(0, 6).toUpperCase()}`;
+        let terminalOrderNumber: bigint | null = null;
+        if (data.terminalId) {
+          const updated = await tx.fiscalPosTerminal.updateMany({
+            where: { id: data.terminalId, companyId: auth.companyId, branchId: auth.branchId, active: true },
+            data: { lastOrderNumber: { increment: 1 }, updatedAt: now },
+          });
+          if (updated.count !== 1) throw new NotFoundException('PDV fiscal não encontrado para numerar o pedido');
+          terminalOrderNumber = (await tx.fiscalPosTerminal.findUniqueOrThrow({ where: { id: data.terminalId }, select: { lastOrderNumber: true } })).lastOrderNumber;
+        }
+        const orderNumber = terminalOrderNumber === null
+          ? `${origin === 'food' ? 'FOOD' : 'PDV'}-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${orderId.slice(0, 6).toUpperCase()}`
+          : `PDV-${terminalOrderNumber.toString().padStart(9, '0')}`;
         const saleNumber = `VEN-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${saleId.slice(0, 6).toUpperCase()}`;
         await tx.order.create({
           data: {
@@ -913,6 +924,48 @@ export class PosService {
           });
       }
       return settlement;
+    });
+  }
+
+  async receiveCustomerCredit(auth: AccessTokenPayload, customerId: string, input: unknown) {
+    const data = receiveCreditSchema.parse(input);
+    const replay = await this.prisma.financialSettlement.findFirst({
+      where: { companyId: auth.companyId, idempotencyKey: `credit-customer:${data.idempotencyKey}:0` },
+    });
+    if (replay) return { paidAmount: replay.principalAmount.toString(), settledAt: replay.settledAt, totalOpenAmount: null, allocations: [] };
+    const [customer, method] = await Promise.all([
+      this.prisma.customer.findFirst({ where: { id: customerId, companyId: auth.companyId, active: true, deletedAt: null } }),
+      this.prisma.paymentMethod.findFirst({ where: { id: data.paymentMethodId, companyId: auth.companyId, active: true, type: { not: 'credit_account' } } }),
+    ]);
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    if (!method) throw new NotFoundException('Forma de recebimento não encontrada');
+    const requested = new Prisma.Decimal(data.amount);
+    return this.serializable(async (tx) => {
+      const receivables = await tx.accountReceivable.findMany({
+        where: { companyId: auth.companyId, branchId: auth.branchId, customerId, status: { in: ['open', 'partial'] } },
+        orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+      });
+      const totalOpen = receivables.reduce((sum, account) => sum.add(account.openAmount), new Prisma.Decimal(0));
+      if (requested.gt(totalOpen)) throw new BadRequestException('Pagamento maior que o saldo total do cliente');
+      const registers = await tx.cashRegister.findMany({ where: { companyId: auth.companyId, branchId: auth.branchId, active: true }, select: { id: true } });
+      const session = await tx.cashSession.findFirst({ where: { companyId: auth.companyId, operatorId: auth.sub, status: 'open', cashRegisterId: { in: registers.map(({ id }) => id) } } });
+      const now = new Date();
+      let remaining = requested;
+      const allocations: Array<{ receivableId: string; orderId: string | null; description: string; amount: string; remaining: string }> = [];
+      for (let index = 0; index < receivables.length && remaining.gt(0); index += 1) {
+        const account = receivables[index]!;
+        const allocated = Prisma.Decimal.min(account.openAmount, remaining);
+        const openAmount = account.openAmount.sub(allocated);
+        await tx.financialSettlement.create({ data: { id: uuidV7(), companyId: auth.companyId, payableId: null, receivableId: account.id, bankAccountId: null, cashSessionId: session?.id ?? null, paymentMethodId: method.id, receivedBy: auth.sub, principalAmount: allocated, interest: 0, discount: 0, settledAt: now, idempotencyKey: `credit-customer:${data.idempotencyKey}:${index}`, createdAt: now, updatedAt: now } });
+        await tx.accountReceivable.update({ where: { id: account.id }, data: { openAmount, status: openAmount.isZero() ? 'paid' : 'partial', updatedAt: now } });
+        if (account.orderId) {
+          const payment = await tx.payment.create({ data: { id: uuidV7(), companyId: auth.companyId, branchId: auth.branchId, orderId: account.orderId, paymentMethodId: method.id, amount: allocated, status: 'paid', idempotencyKey: `credit-customer-receipt:${data.idempotencyKey}:${index}`, paidAt: now, createdAt: now, updatedAt: now } });
+          if (session) await tx.cashMovement.create({ data: { id: uuidV7(), companyId: auth.companyId, cashSessionId: session.id, paymentId: payment.id, paymentMethodId: method.id, type: 'receipt', amount: allocated, description: `Recebimento crediário ${account.description}`, occurredAt: now, createdBy: auth.sub, createdAt: now, updatedAt: now } });
+        }
+        allocations.push({ receivableId: account.id, orderId: account.orderId, description: account.description, amount: allocated.toFixed(2), remaining: openAmount.toFixed(2) });
+        remaining = remaining.sub(allocated);
+      }
+      return { paidAmount: requested.toFixed(2), settledAt: now, totalOpenAmount: totalOpen.sub(requested).toFixed(2), allocations };
     });
   }
 

@@ -28,6 +28,7 @@ import { PaymentConfigurationPanel } from './PaymentConfigurationPanel';
 import { CashOperationsPanel } from './CashOperationsPanel';
 import { DashboardPanel } from './DashboardPanel';
 import { ReportsPanel } from './ReportsPanel';
+import { CompanyProfilePanel } from './CompanyProfilePanel';
 
 export type Section =
   | 'dashboard'
@@ -450,7 +451,8 @@ export function AdminShell({
           {section === 'dashboard' && (
             <DashboardPanel onOpenOrders={() => setSection('sales-flow')} />
           )}
-          {isWorkspaceSection(section) && <ModuleWorkspacePanel section={section} />}
+          {isWorkspaceSection(section) && section !== 'company-registration' && <ModuleWorkspacePanel section={section} />}
+          {section === 'company-registration' && <CompanyProfilePanel canManage={user.permissions.includes('admin.branches.manage')} />}
           {available.length === 0 && (
             <section className="empty">
               <h1>Sem módulos liberados</h1>

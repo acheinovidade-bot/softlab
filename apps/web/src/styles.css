@@ -4886,6 +4886,20 @@ th {
   gap: 8px;
   padding: 12px 16px 16px;
 }
+.statement-payment-total {
+  grid-template-columns: minmax(220px, 1.4fr) minmax(170px, 1fr) 150px auto;
+  align-items: end;
+  margin: 0 0 16px;
+  border: 1px solid #b9d8d3;
+  border-radius: 14px;
+  background: #f1faf8;
+}
+.statement-payment-total > div { display: grid; gap: 3px; color: #0c675c; }
+.statement-payment-total > div small { color: var(--muted); font-weight: 500; }
+.company-profile-form { margin-bottom: 28px; }
+.company-profile-form label small { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }
+.page-header.compact { margin-top: 24px; }
+.table-subtitle { display: block; margin-top: 3px; color: var(--muted); }
 .statement-settlements {
   margin-top: 16px;
   padding: 16px;

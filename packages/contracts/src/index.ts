@@ -48,7 +48,20 @@ export interface FiscalPosTerminalSummary {
   cscToken: string;
   onlineSeries: string;
   offlineSeries: string;
+  nfeSeries: string;
+  lastOrderNumber: string;
+  lastNfceNumber: string;
+  lastNfceOfflineNumber: string;
+  lastNfeNumber: string;
   active: boolean;
+}
+
+export interface CompanyProfile {
+  id: string; taxId: string; legalName: string; tradeName: string | null; timezone: string;
+  stateRegistration: string | null; municipalRegistration: string | null; taxRegime: string | null;
+  cnae: string | null; phone: string | null; email: string | null; postalCode: string | null;
+  street: string | null; addressNumber: string | null; complement: string | null;
+  district: string | null; city: string | null; state: string | null;
 }
 
 export interface RoleSummary {
@@ -211,6 +224,8 @@ export interface CnpjSuggestion {
     phone: string | null;
     email: string | null;
     registrationStatus: string | null;
+    cnae: string | null;
+    stateRegistration: string | null;
     address: AddressSuggestion | null;
   };
   sourceUrl: string | null;

@@ -1,4 +1,4 @@
-import type { BranchSummary, CurrentUser, CustomerCreditStatement, FiscalPosTerminalSummary } from '@erp/contracts';
+import type { BranchSummary, CompanyProfile, CurrentUser, CustomerCreditStatement, FiscalPosTerminalSummary } from '@erp/contracts';
 
 const demoBaseCustomers = [
   { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
@@ -15,7 +15,17 @@ const demoFiscalPosTerminals: FiscalPosTerminalSummary[] = [{
   branchId: '018f4f12-2222-7222-8222-000000000003', posNumber: 1,
   description: 'Computador do caixa principal', cashRegisterCode: 'CAIXA-01',
   cscToken: '000001', onlineSeries: '101', offlineSeries: '901', active: true,
+  nfeSeries: '1', lastOrderNumber: '184', lastNfceNumber: '172',
+  lastNfceOfflineNumber: '3', lastNfeNumber: '28',
 }];
+let demoCompanyProfile: CompanyProfile = {
+  id: '018f4f12-2222-7222-8222-000000000001', taxId: '01027058000191',
+  legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.', tradeName: 'SOFTLAB Varejo',
+  timezone: 'America/Fortaleza', stateRegistration: '065432109', municipalRegistration: '',
+  taxRegime: 'Simples Nacional', cnae: '4711302', phone: '8533334444', email: 'fiscal@softlab.test',
+  postalCode: '60123000', street: 'Avenida Tecnologia', addressNumber: '100', complement: 'Sala 5',
+  district: 'Centro', city: 'Fortaleza', state: 'CE',
+};
 
 const demoStatements: Record<string, CustomerCreditStatement> = {
   '018f4f12-2222-7222-8222-000000000101': {
@@ -181,6 +191,21 @@ export const demoUser: CurrentUser = {
 };
 
 export function demoResponse(path: string, method = 'GET', requestBody?: BodyInit | null): unknown {
+  if (path === '/admin/company-profile') {
+    if (method === 'GET') return demoCompanyProfile;
+    demoCompanyProfile = { ...demoCompanyProfile, ...demoBody(requestBody) } as CompanyProfile;
+    return demoCompanyProfile;
+  }
+  if (/^\/admin\/company-profile\/cnpj\/\d{14}$/.test(path)) return {
+    cnpj: path.slice(-14), found: true, provider: 'brasilapi', sourceUrl: null,
+    warnings: ['Dados de demonstração: confira antes de salvar.'], fields: {
+      legalName: 'Softlab Comércio e Tecnologia Ltda.', tradeName: 'SOFTLAB Varejo',
+      phone: '8533334444', email: 'fiscal@softlab.test', registrationStatus: 'ATIVA',
+      cnae: '4711302', stateRegistration: '065432109', address: { postalCode: '60123000',
+        street: 'Avenida Tecnologia', number: '100', complement: 'Sala 5', district: 'Centro',
+        city: 'Fortaleza', state: 'CE', country: 'BR' },
+    },
+  };
   if (path === '/admin/branches') {
     if (method === 'GET') return demoBranches;
     const body = demoBody(requestBody);
@@ -199,7 +224,8 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
       id: crypto.randomUUID(), branchId: demoText(body.branchId), posNumber: Number(body.posNumber),
       description: demoText(body.description), cashRegisterCode: demoText(body.cashRegisterCode).toUpperCase(),
       cscToken: demoText(body.cscToken), onlineSeries: demoText(body.onlineSeries),
-      offlineSeries: demoText(body.offlineSeries), active: true,
+      offlineSeries: demoText(body.offlineSeries), nfeSeries: demoText(body.nfeSeries) || '1',
+      lastOrderNumber: '0', lastNfceNumber: '0', lastNfceOfflineNumber: '0', lastNfeNumber: '0', active: true,
     };
     demoFiscalPosTerminals.push(terminal);
     return terminal;
@@ -247,6 +273,29 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
     statement.settlements.unshift(payment);
     statement.lastPayment = payment;
     return payment;
+  }
+  const customerSettlementMatch = path.match(/^\/sales\/pos\/customers\/([^/]+)\/settlements$/);
+  if (customerSettlementMatch && method !== 'GET') {
+    const statement = demoStatements[customerSettlementMatch[1]!];
+    if (!statement) throw new Error('Cliente sem contas a receber');
+    const body = demoBody(requestBody); const requested = Number(body.amount ?? 0);
+    if (requested <= 0 || requested > Number(statement.totalDue)) throw new Error('Valor de pagamento inválido');
+    let remaining = requested;
+    const allocations: Array<{ description: string; amount: string; remaining: string }> = [];
+    for (const coupon of [...statement.coupons].reverse()) {
+      if (remaining <= 0 || Number(coupon.amountDue) <= 0) continue;
+      const allocated = Math.min(remaining, Number(coupon.amountDue));
+      coupon.amountPaid = (Number(coupon.amountPaid) + allocated).toFixed(2);
+      coupon.amountDue = (Number(coupon.amountDue) - allocated).toFixed(2);
+      allocations.push({ description: `Crediário ${coupon.saleNumber}`, amount: allocated.toFixed(2), remaining: coupon.amountDue });
+      remaining -= allocated;
+    }
+    statement.totalPaid = (Number(statement.totalPaid) + requested).toFixed(2);
+    statement.totalDue = (Number(statement.totalDue) - requested).toFixed(2);
+    const settledAt = new Date().toISOString();
+    const payment = { id: crypto.randomUUID(), settledAt, amount: requested.toFixed(2), account: `${allocations.length} compra(s) baixada(s)`, accountStatus: Number(statement.totalDue) === 0 ? 'paid' : 'partial' };
+    statement.settlements.unshift(payment); statement.lastPayment = payment;
+    return { paidAmount: requested.toFixed(2), settledAt, totalOpenAmount: statement.totalDue, allocations };
   }
   if (path.startsWith('/catalog/products'))
     return {

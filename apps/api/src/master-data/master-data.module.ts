@@ -4,5 +4,5 @@ import { CustomerEnrichmentController, CustomersController, EmployeesController,
 import { CustomerEnrichmentService } from './customer-enrichment.service';
 import { MasterDataService } from './master-data.service';
 
-@Module({ imports: [InfrastructureModule], controllers: [CustomerEnrichmentController, CustomersController, SupplierProductsController, SuppliersController, EmployeesController], providers: [MasterDataService, CustomerEnrichmentService] })
+@Module({ imports: [InfrastructureModule], controllers: [CustomerEnrichmentController, CustomersController, SupplierProductsController, SuppliersController, EmployeesController], providers: [MasterDataService, CustomerEnrichmentService], exports: [CustomerEnrichmentService] })
 export class MasterDataModule {}

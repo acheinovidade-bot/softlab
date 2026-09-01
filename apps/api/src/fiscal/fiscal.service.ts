@@ -34,8 +34,9 @@ export class FiscalService {
     return this.issueDocument(auth, saleId, 'NFCe', '65', issue);
   }
 
-  async issueNfe(auth: AccessTokenPayload, saleId: string) {
-    return this.issueDocument(auth, saleId, 'NFe', '55', { terminalId: null, offline: false });
+  async issueNfe(auth: AccessTokenPayload, saleId: string, input: unknown = {}) {
+    const issue = fiscalIssueSchema.parse(input);
+    return this.issueDocument(auth, saleId, 'NFe', '55', { ...issue, offline: false });
   }
 
   private async issueDocument(
@@ -166,7 +167,7 @@ export class FiscalService {
             number: terminal.posNumber,
             description: terminal.description,
             cashRegisterCode: terminal.cashRegisterCode,
-            series: issue.offline ? terminal.offlineSeries : terminal.onlineSeries,
+            series: documentType === 'NFe' ? terminal.nfeSeries : issue.offline ? terminal.offlineSeries : terminal.onlineSeries,
             cscToken: terminal.cscToken,
             cscCode: terminal.cscCode,
             mode: issue.offline ? 'offline' : 'online',
@@ -262,6 +263,15 @@ export class FiscalService {
           updatedAt: now,
         })),
       });
+      if (terminal) {
+        const sequenceField = documentType === 'NFe'
+          ? 'lastNfeNumber'
+          : issue.offline ? 'lastNfceOfflineNumber' : 'lastNfceNumber';
+        const current = terminal[sequenceField];
+        const authorizedNumber = BigInt(authorized.number);
+        if (authorizedNumber > current)
+          await tx.fiscalPosTerminal.update({ where: { id: terminal.id }, data: { [sequenceField]: authorizedNumber, updatedAt: now } });
+      }
       return fiscal;
     });
     return this.document(created);

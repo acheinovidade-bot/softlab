@@ -4,6 +4,7 @@ const money = z.coerce.number().min(0).max(999_999_999);
 export const posCheckoutSchema = z
   .object({
     idempotencyKey: z.string().uuid(),
+    terminalId: z.string().uuid().nullable().default(null),
     customerId: z.string().uuid().nullable().default(null),
     sellerId: z.string().uuid().nullable().default(null),
     locationId: z.string().uuid(),

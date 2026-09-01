@@ -307,7 +307,10 @@ export function SalesForceApp({
     try {
       const fiscal = await apiRequest<{ number: number }>(`/fiscal/nfe/${saleId}/issue`, {
         method: 'POST',
-        body: '{}',
+        body: JSON.stringify({
+          terminalId: localStorage.getItem('softlab:pos-fiscal-terminal-id'),
+          offline: false,
+        }),
       });
       setMessage(`NF-e ${fiscal.number} emitida com sucesso.`);
     } catch (reason) {

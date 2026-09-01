@@ -78,6 +78,19 @@ model Company {
   taxId     String    @unique @map("tax_id") @db.VarChar(14)
   status    String    @db.VarChar(20)
   timezone  String    @db.VarChar(80)
+  stateRegistration     String?   @map("state_registration") @db.VarChar(40)
+  municipalRegistration String?   @map("municipal_registration") @db.VarChar(40)
+  taxRegime             String?   @map("tax_regime") @db.VarChar(40)
+  cnae                   String?   @db.VarChar(12)
+  phone                  String?   @db.VarChar(30)
+  email                  String?   @db.VarChar(254)
+  postalCode             String?   @map("postal_code") @db.VarChar(8)
+  street                 String?   @db.VarChar(180)
+  addressNumber          String?   @map("address_number") @db.VarChar(30)
+  complement             String?   @db.VarChar(120)
+  district               String?   @db.VarChar(120)
+  city                   String?   @db.VarChar(120)
+  state                  String?   @db.Char(2)
   createdAt DateTime  @map("created_at") @db.Timestamptz
   updatedAt DateTime  @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
@@ -1378,6 +1391,11 @@ model FiscalPosTerminal {
   cscCode          String   @map("csc_code") @db.VarChar(200)
   onlineSeries     String   @map("online_series") @db.VarChar(10)
   offlineSeries    String   @map("offline_series") @db.VarChar(10)
+  nfeSeries        String   @default("1") @map("nfe_series") @db.VarChar(10)
+  lastOrderNumber  BigInt   @default(0) @map("last_order_number")
+  lastNfceNumber   BigInt   @default(0) @map("last_nfce_number")
+  lastNfceOfflineNumber BigInt @default(0) @map("last_nfce_offline_number")
+  lastNfeNumber    BigInt   @default(0) @map("last_nfe_number")
   active           Boolean
   createdAt        DateTime @map("created_at") @db.Timestamptz
   updatedAt        DateTime @map("updated_at") @db.Timestamptz

@@ -562,6 +562,7 @@ export function PosPanel({
       if (forcedOffline) throw new TypeError('Modo offline manual ativado');
       const body = {
         idempotencyKey: requestKey.current,
+        terminalId: localStorage.getItem('softlab:pos-fiscal-terminal-id'),
         customerId: customerId || null,
         sellerId: sellerId || null,
         locationId,
@@ -615,6 +616,7 @@ export function PosPanel({
         const key = requestKey.current;
         const body = {
           idempotencyKey: key,
+          terminalId: localStorage.getItem('softlab:pos-fiscal-terminal-id'),
           customerId: customerId || null,
           sellerId: sellerId || null,
           locationId,

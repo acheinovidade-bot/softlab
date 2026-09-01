@@ -49,4 +49,13 @@ export class PosController {
   ) {
     return this.service.receiveCredit(request.auth, receivableId, body);
   }
+  @Post('customers/:customerId/settlements')
+  @RequirePermissions('sales.credit.receive')
+  receiveCustomerBalance(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.receiveCustomerCredit(request.auth, customerId, body);
+  }
 }

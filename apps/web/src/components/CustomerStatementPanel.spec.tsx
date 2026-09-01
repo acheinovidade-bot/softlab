@@ -8,7 +8,7 @@ describe('CustomerStatementPanel', () => {
     const write = vi.fn();
     const close = vi.fn();
     const open = vi.spyOn(window, 'open').mockReturnValue({ document: { write, close } } as never);
-    vi.mocked(apiRequest).mockResolvedValue({
+    const statement = {
       customer: { id: 'c1', name: 'Maria', creditLimit: '500' },
       period: { from: '2026-08-01', to: '2026-08-31' },
       totalPurchased: '80',
@@ -42,7 +42,11 @@ describe('CustomerStatementPanel', () => {
           items: [{ description: 'Café especial', quantity: '2', unitPrice: '40', total: '80' }],
         },
       ],
-    } as never);
+    } as never;
+    vi.mocked(apiRequest).mockImplementation((path: string) => Promise.resolve(path.includes('/settlements') ? {
+      paidAmount: '30', settledAt: '2026-08-26T10:00:00Z', totalOpenAmount: '30',
+      allocations: [{ description: 'Crediário VEN-001', amount: '30', remaining: '30' }],
+    } as never : statement));
     render(
       <CustomerStatementPanel
         customerId="c1"
@@ -61,17 +65,17 @@ describe('CustomerStatementPanel', () => {
     expect(screen.getByText('VEN-001')).toBeInTheDocument();
     expect(screen.getAllByText(/25\/08\/2026/).length).toBeGreaterThan(0);
     expect(screen.getByText('Pagamentos e contas baixadas')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Receber parcial' })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: '' }), { target: { value: 'pix' } });
-    fireEvent.change(screen.getByLabelText('Pagamento de VEN-001'), {
+    expect(screen.getByRole('button', { name: 'Receber valor parcial ou total' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Forma de recebimento do saldo'), { target: { value: 'pix' } });
+    fireEvent.change(screen.getByLabelText('Valor total a receber'), {
       target: { value: '30.00' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Receber parcial' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Receber valor parcial ou total' }));
     await waitFor(() =>
       expect(write).toHaveBeenCalledWith(expect.stringContaining('RECIBO DE PAGAMENTO')),
     );
-    expect(write).toHaveBeenCalledWith(expect.stringContaining('COMPRA BAIXADA'));
-    expect(write).toHaveBeenCalledWith(expect.stringContaining('VEN-001'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('COMPRAS BAIXADAS'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('Crediário VEN-001'));
     expect(write).toHaveBeenCalledWith(expect.stringContaining('VALOR PAGO'));
     expect(write).toHaveBeenCalledWith(expect.stringContaining('30,00'));
     fireEvent.click(screen.getByRole('button', { name: 'Imprimir extrato 80 mm' }));

@@ -55,6 +55,7 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
         cscCode: data.get('cscCode'),
         onlineSeries: data.get('onlineSeries'),
         offlineSeries: data.get('offlineSeries'),
+        nfeSeries: data.get('nfeSeries'),
       }),
     });
   }
@@ -154,14 +155,14 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
       )}
       <div className="table-card">
         <table>
-          <thead><tr><th>Filial</th><th>PDV</th><th>Caixa / computador</th><th>Série online</th><th>Série offline</th><th>Vínculo local</th></tr></thead>
+          <thead><tr><th>Filial</th><th>PDV</th><th>Caixa / computador</th><th>Série NFC-e online</th><th>Série NFC-e offline</th><th>Série NF-e</th><th>Vínculo local</th></tr></thead>
           <tbody>
             {terminals.map((terminal) => (
               <tr key={terminal.id}>
                 <td>{items.find(({ id }) => id === terminal.branchId)?.code}</td>
                 <td><strong>PDV {terminal.posNumber}</strong></td>
                 <td>{terminal.cashRegisterCode} · {terminal.description}</td>
-                <td>{terminal.onlineSeries}</td><td>{terminal.offlineSeries}</td>
+                <td>{terminal.onlineSeries}</td><td>{terminal.offlineSeries}</td><td>{terminal.nfeSeries}</td>
                 <td><button type="button" className="link" onClick={() => {
                   localStorage.setItem('softlab:pos-fiscal-terminal-id', terminal.id);
                   setError(`Este computador foi vinculado ao PDV ${terminal.posNumber}.`);
@@ -188,6 +189,7 @@ function FiscalTerminalFields() {
         <label>Chave CSC<input name="cscCode" type="password" autoComplete="new-password" required /></label>
         <label>Série PDV online<input name="onlineSeries" inputMode="numeric" pattern="\d+" required /></label>
         <label>Série PDV offline<input name="offlineSeries" inputMode="numeric" pattern="\d+" required /></label>
+        <label>Série NF-e<input name="nfeSeries" inputMode="numeric" pattern="\d+" defaultValue="1" required /></label>
       </div>
     </fieldset>
   );
