@@ -1,4 +1,116 @@
-import type { CurrentUser } from '@erp/contracts';
+import type { BranchSummary, CompanyProfile, CurrentUser, CustomerCreditStatement, FiscalPosTerminalSummary } from '@erp/contracts';
+
+const demoBaseCustomers = [
+  { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
+  { id: '018f4f12-2222-7222-8222-000000000102', name: 'Mercado Boa Mesa' },
+];
+const demoPosCustomers = [...demoBaseCustomers, ...readSavedDemoCustomers()];
+const demoBranches: BranchSummary[] = [{
+  id: '018f4f12-2222-7222-8222-000000000003', code: 'MATRIZ',
+  legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.', tradeName: 'ERP Híbrido Mercado',
+  taxId: '01027058000191', status: 'active',
+}];
+const demoFiscalPosTerminals: FiscalPosTerminalSummary[] = [{
+  id: '018f4f12-2222-7222-8222-000000000901',
+  branchId: '018f4f12-2222-7222-8222-000000000003', posNumber: 1,
+  description: 'Computador do caixa principal', cashRegisterCode: 'CAIXA-01',
+  cscToken: '000001', onlineSeries: '101', offlineSeries: '901', active: true,
+  nfeSeries: '1', lastOrderNumber: '184', lastNfceNumber: '172',
+  lastNfceOfflineNumber: '3', lastNfeNumber: '28',
+}];
+let demoCompanyProfile: CompanyProfile = {
+  id: '018f4f12-2222-7222-8222-000000000001', taxId: '01027058000191',
+  legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.', tradeName: 'SOFTLAB Varejo',
+  timezone: 'America/Fortaleza', stateRegistration: '065432109', municipalRegistration: '',
+  taxRegime: 'Simples Nacional', cnae: '4711302', phone: '8533334444', email: 'fiscal@softlab.test',
+  postalCode: '60123000', street: 'Avenida Tecnologia', addressNumber: '100', complement: 'Sala 5',
+  district: 'Centro', city: 'Fortaleza', state: 'CE',
+};
+
+const demoStatements: Record<string, CustomerCreditStatement> = {
+  '018f4f12-2222-7222-8222-000000000101': {
+    customer: {
+      id: '018f4f12-2222-7222-8222-000000000101',
+      name: 'Ana Martins',
+      creditLimit: '1500.00',
+    },
+    period: { from: '2026-08-01', to: '2026-08-31' },
+    totalPurchased: '247.30',
+    totalPaid: '80.00',
+    totalDue: '167.30',
+    lastPayment: {
+      settledAt: '2026-08-27T15:42:00.000Z',
+      amount: '80.00',
+      account: 'Crediário VEN-000184',
+      accountStatus: 'partial',
+    },
+    settlements: [
+      {
+        id: 'settlement-demo-1',
+        settledAt: '2026-08-27T15:42:00.000Z',
+        amount: '80.00',
+        account: 'Crediário VEN-000184',
+        accountStatus: 'partial',
+      },
+    ],
+    coupons: [
+      {
+        saleId: 'sale-demo-credit-1',
+        saleNumber: 'VEN-000184',
+        soldAt: '2026-08-20T13:15:00.000Z',
+        total: '147.50',
+        creditAmount: '147.50',
+        amountPaid: '80.00',
+        amountDue: '67.50',
+        receivableId: 'receivable-demo-1',
+        items: [
+          {
+            description: 'Café Especial 500 g',
+            quantity: '3',
+            unitPrice: '32.90',
+            total: '98.70',
+          },
+          {
+            description: 'Leite Integral 1 L',
+            quantity: '4',
+            unitPrice: '6.20',
+            total: '24.80',
+          },
+          {
+            description: 'Pão de Queijo Artesanal',
+            quantity: '2',
+            unitPrice: '12.00',
+            total: '24.00',
+          },
+        ],
+      },
+      {
+        saleId: 'sale-demo-credit-2',
+        saleNumber: 'VEN-000191',
+        soldAt: '2026-08-29T17:08:00.000Z',
+        total: '99.80',
+        creditAmount: '99.80',
+        amountPaid: '0.00',
+        amountDue: '99.80',
+        receivableId: 'receivable-demo-2',
+        items: [
+          {
+            description: 'Café Especial 500 g',
+            quantity: '2',
+            unitPrice: '32.90',
+            total: '65.80',
+          },
+          {
+            description: 'Produto de mercearia',
+            quantity: '2',
+            unitPrice: '17.00',
+            total: '34.00',
+          },
+        ],
+      },
+    ],
+  },
+};
 
 export const demoUser: CurrentUser = {
   id: '018f4f12-2222-7222-8222-000000000001',
@@ -17,6 +129,7 @@ export const demoUser: CurrentUser = {
     'finance',
     'food',
     'fiscal',
+    'logistics',
   ],
   permissions: [
     'catalog.products.read',
@@ -30,6 +143,7 @@ export const demoUser: CurrentUser = {
     'sales.discounts.apply',
     'sales.pos.use',
     'sales.pos.discount',
+    'sales.pos.settings.manage',
     'sales.credit.read',
     'sales.credit.receive',
     'finance.cash.read',
@@ -39,8 +153,12 @@ export const demoUser: CurrentUser = {
     'food.tables.manage',
     'food.tabs.operate',
     'fiscal.nfce.issue',
+    'fiscal.nfe.issue',
     'fiscal.settings.manage',
     'sales.receipts.print',
+    'logistics.deliveries.read',
+    'logistics.deliveries.operate',
+    'logistics.settings.manage',
     'stock.inventory.read',
     'stock.adjustments.create',
     'stock.movements.read',
@@ -66,12 +184,119 @@ export const demoUser: CurrentUser = {
     'master.employees.manage',
     'admin.subscription.read',
     'admin.branches.read',
+    'admin.branches.manage',
     'admin.users.read',
     'admin.roles.read',
   ],
 };
 
-export function demoResponse(path: string): unknown {
+export function demoResponse(path: string, method = 'GET', requestBody?: BodyInit | null): unknown {
+  if (path === '/admin/company-profile') {
+    if (method === 'GET') return demoCompanyProfile;
+    demoCompanyProfile = { ...demoCompanyProfile, ...demoBody(requestBody) } as CompanyProfile;
+    return demoCompanyProfile;
+  }
+  if (/^\/admin\/company-profile\/cnpj\/\d{14}$/.test(path)) return {
+    cnpj: path.slice(-14), found: true, provider: 'brasilapi', sourceUrl: null,
+    warnings: ['Dados de demonstração: confira antes de salvar.'], fields: {
+      legalName: 'Softlab Comércio e Tecnologia Ltda.', tradeName: 'SOFTLAB Varejo',
+      phone: '8533334444', email: 'fiscal@softlab.test', registrationStatus: 'ATIVA',
+      cnae: '4711302', stateRegistration: '065432109', address: { postalCode: '60123000',
+        street: 'Avenida Tecnologia', number: '100', complement: 'Sala 5', district: 'Centro',
+        city: 'Fortaleza', state: 'CE', country: 'BR' },
+    },
+  };
+  if (path === '/admin/branches') {
+    if (method === 'GET') return demoBranches;
+    const body = demoBody(requestBody);
+    const branch: BranchSummary = {
+      id: crypto.randomUUID(), code: demoText(body.code).toUpperCase(),
+      legalName: demoText(body.legalName), tradeName: demoText(body.tradeName) || null,
+      taxId: demoText(body.taxId), status: 'active',
+    };
+    demoBranches.push(branch);
+    return branch;
+  }
+  if (path === '/admin/fiscal-pos-terminals') {
+    if (method === 'GET') return demoFiscalPosTerminals;
+    const body = demoBody(requestBody);
+    const terminal: FiscalPosTerminalSummary = {
+      id: crypto.randomUUID(), branchId: demoText(body.branchId), posNumber: Number(body.posNumber),
+      description: demoText(body.description), cashRegisterCode: demoText(body.cashRegisterCode).toUpperCase(),
+      cscToken: demoText(body.cscToken), onlineSeries: demoText(body.onlineSeries),
+      offlineSeries: demoText(body.offlineSeries), nfeSeries: demoText(body.nfeSeries) || '1',
+      lastOrderNumber: '0', lastNfceNumber: '0', lastNfceOfflineNumber: '0', lastNfeNumber: '0', active: true,
+    };
+    demoFiscalPosTerminals.push(terminal);
+    return terminal;
+  }
+  if (path === '/master/customers' && method !== 'GET') {
+    const body = demoBody(requestBody);
+    const id = crypto.randomUUID();
+    const legalName =
+      typeof body.legalName === 'string' && body.legalName.trim()
+        ? body.legalName.trim()
+        : 'Cliente sem nome';
+    demoPosCustomers.push({ id, name: legalName });
+    persistDemoCustomers();
+    demoStatements[id] = emptyStatement(id, legalName);
+    return { id, legalName };
+  }
+  const statementMatch = path.match(/^\/sales\/pos\/customers\/([^/]+)\/statement\?/);
+  if (statementMatch) {
+    const customerId = statementMatch[1]!;
+    const customer = demoPosCustomers.find(({ id }) => id === customerId);
+    return demoStatements[customerId] ?? emptyStatement(customerId, customer?.name ?? 'Cliente');
+  }
+  const settlementMatch = path.match(/^\/sales\/pos\/receivables\/([^/]+)\/settlements$/);
+  if (settlementMatch && method !== 'GET') {
+    const statement = Object.values(demoStatements).find((item) =>
+      item.coupons.some(({ receivableId }) => receivableId === settlementMatch[1]),
+    );
+    const coupon = statement?.coupons.find(
+      ({ receivableId }) => receivableId === settlementMatch[1],
+    );
+    if (!statement || !coupon) throw new Error('Conta a receber não encontrada');
+    const body = demoBody(requestBody);
+    const amount = Number(body.amount ?? 0);
+    coupon.amountPaid = (Number(coupon.amountPaid) + amount).toFixed(2);
+    coupon.amountDue = Math.max(0, Number(coupon.amountDue) - amount).toFixed(2);
+    statement.totalPaid = (Number(statement.totalPaid) + amount).toFixed(2);
+    statement.totalDue = Math.max(0, Number(statement.totalDue) - amount).toFixed(2);
+    const payment = {
+      id: crypto.randomUUID(),
+      settledAt: new Date().toISOString(),
+      amount: amount.toFixed(2),
+      account: `Crediário ${coupon.saleNumber}`,
+      accountStatus: Number(coupon.amountDue) === 0 ? 'paid' : 'partial',
+    };
+    statement.settlements.unshift(payment);
+    statement.lastPayment = payment;
+    return payment;
+  }
+  const customerSettlementMatch = path.match(/^\/sales\/pos\/customers\/([^/]+)\/settlements$/);
+  if (customerSettlementMatch && method !== 'GET') {
+    const statement = demoStatements[customerSettlementMatch[1]!];
+    if (!statement) throw new Error('Cliente sem contas a receber');
+    const body = demoBody(requestBody); const requested = Number(body.amount ?? 0);
+    if (requested <= 0 || requested > Number(statement.totalDue)) throw new Error('Valor de pagamento inválido');
+    let remaining = requested;
+    const allocations: Array<{ description: string; amount: string; remaining: string }> = [];
+    for (const coupon of [...statement.coupons].reverse()) {
+      if (remaining <= 0 || Number(coupon.amountDue) <= 0) continue;
+      const allocated = Math.min(remaining, Number(coupon.amountDue));
+      coupon.amountPaid = (Number(coupon.amountPaid) + allocated).toFixed(2);
+      coupon.amountDue = (Number(coupon.amountDue) - allocated).toFixed(2);
+      allocations.push({ description: `Crediário ${coupon.saleNumber}`, amount: allocated.toFixed(2), remaining: coupon.amountDue });
+      remaining -= allocated;
+    }
+    statement.totalPaid = (Number(statement.totalPaid) + requested).toFixed(2);
+    statement.totalDue = (Number(statement.totalDue) - requested).toFixed(2);
+    const settledAt = new Date().toISOString();
+    const payment = { id: crypto.randomUUID(), settledAt, amount: requested.toFixed(2), account: `${allocations.length} compra(s) baixada(s)`, accountStatus: Number(statement.totalDue) === 0 ? 'paid' : 'partial' };
+    statement.settlements.unshift(payment); statement.lastPayment = payment;
+    return { paidAmount: requested.toFixed(2), settledAt, totalOpenAmount: statement.totalDue, allocations };
+  }
   if (path.startsWith('/catalog/products'))
     return {
       items: [
@@ -80,6 +305,7 @@ export function demoResponse(path: string): unknown {
           code: 'CAF-001',
           barcode: '7891000100103',
           description: 'Café Especial 500 g',
+          unitCode: 'UN',
           shortDescription: 'Café 500 g',
           unitId: 'u1',
           active: true,
@@ -92,6 +318,7 @@ export function demoResponse(path: string): unknown {
           code: 'LEI-001',
           barcode: '7891000200209',
           description: 'Leite Integral 1 L',
+          unitCode: 'UN',
           shortDescription: 'Leite 1 L',
           unitId: 'u1',
           active: true,
@@ -127,10 +354,18 @@ export function demoResponse(path: string): unknown {
     };
   if (path === '/sales/pos/lookups')
     return {
-      customers: [
-        { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
-        { id: '018f4f12-2222-7222-8222-000000000102', name: 'Mercado Boa Mesa' },
-      ],
+      issuer: {
+        tradeName: 'ERP Híbrido Mercado',
+        legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.',
+        taxId: '01027058000191',
+      },
+      settings: {
+        defaultCustomerId: null,
+        defaultSellerId: null,
+        defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
+        sellerMode: 'default',
+      },
+      customers: demoPosCustomers,
       sellers: [{ id: '018f4f12-2222-7222-8222-000000000201', name: 'Marina Costa' }],
       paymentMethods: [
         {
@@ -146,6 +381,20 @@ export function demoResponse(path: string): unknown {
           name: 'Crediário',
           type: 'credit_account',
         },
+        {
+          id: '018f4f12-2222-7222-8222-000000000304',
+          code: 'CREDITO',
+          name: 'Cartão de crédito',
+          type: 'credit_card',
+          maxInstallments: 12,
+          cardConfiguration: {
+            operatorName: 'Rede',
+            debitRate: '1.49',
+            creditRate: '2.89',
+            installmentRate: '0.35',
+            settlementDays: 30,
+          },
+        },
       ],
       locations: [
         { id: '018f4f12-2222-7222-8222-000000000401', code: 'LOJA', name: 'Estoque da loja' },
@@ -158,8 +407,30 @@ export function demoResponse(path: string): unknown {
           description: 'Café Especial 500 g',
           openPrice: false,
           controlsLot: true,
+          controlsExpiry: true,
+          selectLotAtPos: true,
           salePrice: '32.90',
           availableQuantity: '18',
+          lots: [
+            {
+              id: '018f4f12-2222-7222-8222-000000000811',
+              lotNumber: 'CAF-0826-A',
+              expiresAt: '2026-09-12T00:00:00.000Z',
+              availableQuantity: '7',
+            },
+            {
+              id: '018f4f12-2222-7222-8222-000000000812',
+              lotNumber: 'CAF-1026-B',
+              expiresAt: '2026-10-30T00:00:00.000Z',
+              availableQuantity: '11',
+            },
+            {
+              id: '018f4f12-2222-7222-8222-000000000813',
+              lotNumber: 'CAF-VENCIDO',
+              expiresAt: '2026-07-10T00:00:00.000Z',
+              availableQuantity: '2',
+            },
+          ],
         },
         {
           id: 'p2',
@@ -168,8 +439,11 @@ export function demoResponse(path: string): unknown {
           description: 'Leite Integral 1 L',
           openPrice: false,
           controlsLot: true,
+          controlsExpiry: true,
+          selectLotAtPos: false,
           salePrice: '6.49',
           availableQuantity: '42',
+          lots: [],
         },
         {
           id: 'p3',
@@ -178,11 +452,325 @@ export function demoResponse(path: string): unknown {
           description: 'Pão de Queijo Artesanal',
           openPrice: false,
           controlsLot: false,
+          controlsExpiry: false,
+          selectLotAtPos: false,
           salePrice: '12.50',
           availableQuantity: '25',
+          lots: [],
         },
       ],
     };
+  if (path === '/sales/pos/settings')
+    return {
+      defaultCustomerId: null,
+      defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
+      defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
+      sellerMode: 'per_sale',
+    };
+  if (path === '/sales/lookups')
+    return {
+      customers: [
+        { id: 'customer-1', name: 'Ana Martins' },
+        { id: 'customer-2', name: 'Mercado Boa Mesa' },
+      ],
+      sellers: [
+        { id: 'seller-1', name: 'Marina Costa' },
+        { id: 'seller-2', name: 'Carlos Lima' },
+      ],
+      paymentMethods: [
+        { id: 'method-1', name: 'PIX' },
+        { id: 'method-2', name: 'Boleto' },
+      ],
+      products: [
+        {
+          id: 'product-1',
+          code: 'CAF-001',
+          description: 'Café Especial 500 g',
+          controlsLot: true,
+          controlsExpiry: true,
+          openPrice: false,
+          price: { salePrice: '32.90' },
+        },
+        {
+          id: 'product-2',
+          code: 'LEI-001',
+          description: 'Leite Integral 1 L',
+          controlsLot: true,
+          controlsExpiry: true,
+          openPrice: false,
+          price: { salePrice: '6.49' },
+        },
+      ],
+      locations: [{ id: 'location-1', code: 'EXP', name: 'Expedição' }],
+      lots: [],
+    };
+  if (path === '/sales/quotes') return { items: [], total: 0, page: 1, pageSize: 20 };
+  if (path === '/sales/orders' && method !== 'GET')
+    return demoOrder('order-new', 'PED-000429', 'separation', 'Ana Martins', '164.50');
+  if (path === '/sales/orders')
+    return {
+      items: [
+        demoOrder('order-1', 'PED-000428', 'separation', 'Ana Martins', '219.80'),
+        demoOrder('order-2', 'PED-000427', 'invoicing', 'Mercado Boa Mesa', '648.40'),
+        demoOrder('order-3', 'PED-000426', 'delivery', 'Carlos Nobre', '98.70'),
+        demoOrder('order-4', 'PED-000425', 'completed', 'Beatriz Lima', '312.60'),
+      ],
+      total: 4,
+      page: 1,
+      pageSize: 20,
+    };
+  if (path.startsWith('/sales/orders/'))
+    return demoOrder(
+      path.split('/')[3] ?? 'order-1',
+      'PED-000428',
+      'separation',
+      'Ana Martins',
+      '219.80',
+    );
+  if (path === '/cash/overview')
+    return {
+      registers: [
+        { id: '018f4f12-2222-7222-8222-000000000901', code: 'CX-01', name: 'Caixa principal' },
+      ],
+      sessions: [],
+      paymentMethods: [],
+    };
+  if (path === '/cash/open' && method !== 'GET')
+    return { id: '018f4f12-2222-7222-8222-000000000902', status: 'open' };
+  if (path === '/cash/dashboard') {
+    const daily = [
+      980, 1240, 890, 1630, 1450, 1890, 2100, 1760, 2380, 2040, 2670, 2310, 2940, 3184,
+    ];
+    const monthly = [
+      18200, 21400, 19800, 24600, 27100, 25800, 30400, 32900, 35100, 38700, 41200, 44850,
+    ];
+    return {
+      updatedAt: new Date().toISOString(),
+      metrics: {
+        todayGross: '3184.70',
+        todaySales: 37,
+        monthGross: '44850.30',
+        monthSales: 426,
+        averageTicket: '105.28',
+        pendingOrders: 8,
+        openReceivables: '12740.80',
+        lowStockProducts: 14,
+      },
+      daily: daily.map((value, index) => ({
+        label: `${String(index + 16).padStart(2, '0')}/08`,
+        value: String(value),
+        count: 20 + index,
+      })),
+      monthly: monthly.map((value, index) => ({
+        label: ['set', 'out', 'nov', 'dez', 'jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago'][
+          index
+        ],
+        value: String(value),
+        count: 180 + index * 18,
+      })),
+      topProducts: Array.from({ length: 15 }, (_, index) => ({
+        productId: `top-${index}`,
+        code: `${['CAF', 'LEI', 'PAO', 'ACU', 'ARR'][index % 5]}-${String(index + 1).padStart(3, '0')}`,
+        description: [
+          'Café Especial',
+          'Leite Integral',
+          'Pão de Queijo',
+          'Açúcar Cristal',
+          'Arroz Premium',
+        ][index % 5],
+        quantity: String(482 - index * 21),
+        total: String(15800 - index * 640),
+        sales: 190 - index * 8,
+      })),
+      noSalesProducts: Array.from({ length: 8 }, (_, index) => ({
+        id: `no-sale-${index}`,
+        code: `SEM-${String(index + 1).padStart(3, '0')}`,
+        description: ['Molho Artesanal', 'Kit Presente', 'Biscoito Integral', 'Chá Premium'][
+          index % 4
+        ],
+      })),
+      topCreditCustomers: Array.from({ length: 10 }, (_, index) => ({
+        customerId: `credit-${index}`,
+        name: [
+          'Mercado Boa Mesa',
+          'Comercial Lima',
+          'Ana Martins',
+          'Empório Central',
+          'Carlos Nobre',
+          'Padaria Tradição',
+          'Beatriz Lima',
+          'Supermercado Sol',
+          'Daniela Souza',
+          'Loja Conveniência',
+        ][index],
+        purchased: String(12800 - index * 780),
+        openAmount: String(3200 - index * 170),
+        purchases: 32 - index * 2,
+      })),
+    };
+  }
+  if (path.startsWith('/cash/operations'))
+    return {
+      totals: { sales: 3, gross: '384.70', fees: '5.55', net: '379.15' },
+      records: [
+        {
+          id: 'sale-001',
+          number: 'PDV-000184',
+          soldAt: new Date(Date.now() - 42 * 60_000).toISOString(),
+          status: 'completed',
+          origin: 'pos',
+          customer: 'Ana Martins',
+          operator: 'Marina Costa',
+          total: '219.80',
+          feeAmount: '5.55',
+          netAmount: '214.25',
+          payments: [{ method: 'Cartão de crédito', amount: '219.80', installments: 3 }],
+          fiscal: { type: 'NFC-e', status: 'authorized', number: '184' },
+        },
+        {
+          id: 'sale-002',
+          number: 'PDV-000183',
+          soldAt: new Date(Date.now() - 96 * 60_000).toISOString(),
+          status: 'completed',
+          origin: 'pos',
+          customer: 'Consumidor não identificado',
+          operator: 'Marina Costa',
+          total: '98.40',
+          feeAmount: '0.00',
+          netAmount: '98.40',
+          payments: [{ method: 'PIX', amount: '98.40', installments: 1 }],
+          fiscal: { type: 'NFC-e', status: 'authorized', number: '183' },
+        },
+        {
+          id: 'sale-003',
+          number: 'PDV-000182',
+          soldAt: new Date(Date.now() - 155 * 60_000).toISOString(),
+          status: 'completed',
+          origin: 'food',
+          customer: 'Mercado Boa Mesa',
+          operator: 'Marina Costa',
+          total: '66.50',
+          feeAmount: '0.00',
+          netAmount: '66.50',
+          payments: [{ method: 'Dinheiro', amount: '66.50', installments: 1 }],
+          fiscal: null,
+        },
+      ],
+    };
+  if (path.startsWith('/cash/tape'))
+    return {
+      totals: { entries: 5, inflows: '684.70', outflows: '80.00', balance: '604.70' },
+      entries: [
+        {
+          id: 't1',
+          occurredAt: new Date(Date.now() - 8 * 60 * 60_000).toISOString(),
+          type: 'opening',
+          description: 'Fundo de troco',
+          amount: '300.00',
+          direction: 'in',
+          method: 'Dinheiro',
+          register: 'CAIXA 01',
+          operator: 'Marina Costa',
+        },
+        {
+          id: 't2',
+          occurredAt: new Date(Date.now() - 155 * 60_000).toISOString(),
+          type: 'receipt',
+          description: 'Venda PDV-000182',
+          amount: '66.50',
+          direction: 'in',
+          method: 'Dinheiro',
+          register: 'CAIXA 01',
+          operator: 'Marina Costa',
+        },
+        {
+          id: 't3',
+          occurredAt: new Date(Date.now() - 96 * 60_000).toISOString(),
+          type: 'receipt',
+          description: 'Venda PDV-000183',
+          amount: '98.40',
+          direction: 'in',
+          method: 'PIX',
+          register: 'CAIXA 01',
+          operator: 'Marina Costa',
+        },
+        {
+          id: 't4',
+          occurredAt: new Date(Date.now() - 42 * 60_000).toISOString(),
+          type: 'receipt',
+          description: 'Venda PDV-000184',
+          amount: '219.80',
+          direction: 'in',
+          method: 'Cartão de crédito',
+          register: 'CAIXA 01',
+          operator: 'Marina Costa',
+        },
+        {
+          id: 't5',
+          occurredAt: new Date(Date.now() - 18 * 60_000).toISOString(),
+          type: 'withdrawal',
+          description: 'Sangria para cofre',
+          amount: '80.00',
+          direction: 'out',
+          method: 'Dinheiro',
+          register: 'CAIXA 01',
+          operator: 'Marina Costa',
+        },
+      ],
+    };
+  if (path === '/cash/configuration')
+    return {
+      cardOperators: [
+        {
+          id: '018f4f12-2222-7222-8222-000000000701',
+          code: 'REDE',
+          name: 'Rede',
+          taxId: '01027058000191',
+          debitRate: '1.49',
+          creditRate: '2.89',
+          installmentRate: '0.35',
+          settlementDays: 30,
+          active: true,
+        },
+      ],
+      paymentMethods: [
+        {
+          id: '018f4f12-2222-7222-8222-000000000301',
+          code: 'DINHEIRO',
+          name: 'Dinheiro',
+          type: 'cash',
+          fiscalCode: '01',
+          cardOperatorId: null,
+          maxInstallments: 1,
+          createsReceivable: false,
+          active: true,
+        },
+        {
+          id: '018f4f12-2222-7222-8222-000000000302',
+          code: 'PIX',
+          name: 'PIX',
+          type: 'pix',
+          fiscalCode: '17',
+          cardOperatorId: null,
+          maxInstallments: 1,
+          createsReceivable: false,
+          active: true,
+        },
+        {
+          id: '018f4f12-2222-7222-8222-000000000304',
+          code: 'CREDITO',
+          name: 'Cartão de crédito',
+          type: 'credit_card',
+          fiscalCode: '03',
+          cardOperatorId: '018f4f12-2222-7222-8222-000000000701',
+          maxInstallments: 12,
+          createsReceivable: true,
+          active: true,
+        },
+      ],
+    };
+  if (path.startsWith('/cash/card-operators') || path.startsWith('/cash/payment-methods'))
+    return { ok: true };
   if (path === '/food/overview')
     return {
       tables: Array.from({ length: 12 }, (_, index) => ({
@@ -191,6 +779,7 @@ export function demoResponse(path: string): unknown {
         name: `Mesa ${index + 1}`,
         capacity: index % 3 === 0 ? 6 : 4,
         status: [0, 3, 7].includes(index) ? 'occupied' : 'free',
+        publicToken: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
       })),
       waiters: [
         { id: 'waiter-1', name: 'Carlos Lima' },
@@ -198,9 +787,27 @@ export function demoResponse(path: string): unknown {
       ],
       customers: [],
       products: [
-        { id: 'p1', code: 'CAF-001', description: 'Café Especial', price: '8.50' },
-        { id: 'p3', code: 'PAO-001', description: 'Pão de Queijo', price: '12.50' },
-        { id: 'p4', code: 'BRU-001', description: 'Bruschetta da Casa', price: '24.90' },
+        {
+          id: 'p1',
+          code: 'CAF-001',
+          description: 'Café Especial',
+          printSector: 'Bar',
+          price: '8.50',
+        },
+        {
+          id: 'p3',
+          code: 'PAO-001',
+          description: 'Pão de Queijo',
+          printSector: 'Cozinha',
+          price: '12.50',
+        },
+        {
+          id: 'p4',
+          code: 'BRU-001',
+          description: 'Bruschetta da Casa',
+          printSector: 'Cozinha',
+          price: '24.90',
+        },
       ],
       paymentMethods: [
         { id: '018f4f12-2222-7222-8222-000000000301', name: 'Dinheiro', type: 'cash' },
@@ -254,6 +861,152 @@ export function demoResponse(path: string): unknown {
           itemCount: 3,
           total: '64.70',
         },
+        {
+          id: 'tab-counter',
+          tableId: null,
+          number: 'BAL-021',
+          channel: 'counter',
+          waiterId: 'waiter-1',
+          guests: 1,
+          openedAt: new Date().toISOString(),
+          itemCount: 2,
+          total: '31.40',
+        },
+        {
+          id: 'tab-pickup',
+          tableId: null,
+          number: 'RET-014',
+          channel: 'pickup',
+          waiterId: 'waiter-2',
+          guests: 1,
+          openedAt: new Date().toISOString(),
+          itemCount: 3,
+          total: '58.90',
+        },
+        {
+          id: 'tab-delivery',
+          tableId: null,
+          number: 'DEL-108',
+          channel: 'delivery',
+          waiterId: 'waiter-1',
+          guests: 1,
+          openedAt: new Date().toISOString(),
+          itemCount: 4,
+          total: '86.20',
+        },
+        {
+          id: 'tab-kiosk',
+          tableId: null,
+          number: 'TOT-033',
+          channel: 'kiosk',
+          waiterId: null,
+          guests: 1,
+          openedAt: new Date().toISOString(),
+          itemCount: 1,
+          total: '24.90',
+        },
+        {
+          id: 'tab-digital',
+          tableId: null,
+          number: 'DIG-041',
+          channel: 'digital_menu',
+          waiterId: null,
+          guests: 2,
+          openedAt: new Date().toISOString(),
+          itemCount: 2,
+          total: '49.80',
+        },
+      ],
+    };
+  if (path === '/food/tabs' && method !== 'GET') return { id: 'tab-channel-new' };
+  if (path.startsWith('/food/tabs/') && path.endsWith('/items')) return { ok: true };
+  if (path.startsWith('/food/tabs/') && path.endsWith('/close')) return { ok: true };
+  if (path === '/delivery/overview')
+    return {
+      drivers: [
+        {
+          id: '018f4f12-2222-7222-8222-000000000701',
+          name: 'Rafael Motta',
+          phone: '(85) 99999-1001',
+        },
+        {
+          id: '018f4f12-2222-7222-8222-000000000702',
+          name: 'Júlia Rocha',
+          phone: '(85) 99999-1002',
+        },
+      ],
+      zones: [{ id: 'zone-1', name: 'Centro', calculationType: 'neighborhood', fee: '8.00' }],
+      orders: [
+        {
+          id: '018f4f12-2222-7222-8222-000000000801',
+          number: 'PED-1042',
+          total: '76.40',
+          customerName: 'Ana Martins',
+          addresses: [
+            {
+              id: '018f4f12-2222-7222-8222-000000000901',
+              label: 'Rua das Flores, 120 · Centro · Fortaleza/CE',
+            },
+          ],
+        },
+      ],
+      deliveries: [
+        {
+          id: 'd1',
+          status: 'new',
+          orderNumber: 'PED-1037',
+          customerName: 'Marcos Silva',
+          customerPhone: '(85) 99999-0011',
+          address: 'Rua A, 30 · Centro · Fortaleza/CE',
+          driverId: null,
+          driverName: null,
+          fee: '8.00',
+          distanceKm: '2.4',
+          promisedAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'd2',
+          status: 'preparing',
+          orderNumber: 'PED-1038',
+          customerName: 'Beatriz Lima',
+          customerPhone: null,
+          address: 'Av. Santos Dumont, 600 · Aldeota · Fortaleza/CE',
+          driverId: null,
+          driverName: null,
+          fee: '12.00',
+          distanceKm: '5.8',
+          promisedAt: new Date(Date.now() + 45 * 60_000).toISOString(),
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'd3',
+          status: 'ready',
+          orderNumber: 'PED-1039',
+          customerName: 'Carlos Nobre',
+          customerPhone: null,
+          address: 'Rua Silva Jatahy, 88 · Meireles · Fortaleza/CE',
+          driverId: null,
+          driverName: null,
+          fee: '10.00',
+          distanceKm: '4.1',
+          promisedAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'd4',
+          status: 'out_for_delivery',
+          orderNumber: 'PED-1040',
+          customerName: 'Daniela Souza',
+          customerPhone: null,
+          address: 'Rua B, 220 · Benfica · Fortaleza/CE',
+          driverId: '018f4f12-2222-7222-8222-000000000701',
+          driverName: 'Rafael Motta',
+          fee: '14.00',
+          distanceKm: '7.2',
+          promisedAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+          createdAt: new Date().toISOString(),
+        },
       ],
     };
   if (path === '/food/tabs/tab-1/summary')
@@ -287,6 +1040,116 @@ export function demoResponse(path: string): unknown {
       ],
       total: '87.30',
     };
+  if (path.startsWith('/food/tabs/') && path.endsWith('/summary'))
+    return {
+      tab: { number: 'ATD-DEMO', openedAt: new Date().toISOString(), guests: 1 },
+      items: [
+        {
+          id: 'channel-item-1',
+          productId: 'p4',
+          description: 'Bruschetta da Casa',
+          quantity: '1',
+          unitPrice: '24.90',
+          total: '24.90',
+          notes: null,
+        },
+        {
+          id: 'channel-item-2',
+          productId: 'p1',
+          description: 'Café Especial',
+          quantity: '1',
+          unitPrice: '8.50',
+          total: '8.50',
+          notes: null,
+        },
+      ],
+      total: '33.40',
+    };
+  if (path === '/sales/pos/checkout' && method !== 'GET') {
+    const body = demoBody(requestBody);
+    const customerId = typeof body.customerId === 'string' ? body.customerId : null;
+    const payments = Array.isArray(body.payments)
+      ? (body.payments as Array<{ paymentMethodId?: unknown; amount?: unknown }>)
+      : [];
+    const items = Array.isArray(body.items)
+      ? (body.items as Array<{ productId?: unknown; quantity?: unknown; unitPrice?: unknown }>)
+      : [];
+    const creditAmount = payments
+      .filter(({ paymentMethodId }) => paymentMethodId === '018f4f12-2222-7222-8222-000000000303')
+      .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+    if (creditAmount > 0 && !customerId)
+      throw new Error('Selecione o cliente para concluir a venda no crediário');
+    const total = payments.reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+    const soldAt = new Date().toISOString();
+    const saleId = crypto.randomUUID();
+    const saleNumber = `VEN-DEMO-${String(Date.now()).slice(-6)}`;
+    let credit: {
+      customerId: string;
+      customerName: string;
+      saleCreditAmount: string;
+      totalOpenAmount: string;
+    } | null = null;
+    if (creditAmount > 0 && customerId) {
+      const customer = demoPosCustomers.find(({ id }) => id === customerId);
+      const statement =
+        demoStatements[customerId] ?? emptyStatement(customerId, customer?.name ?? 'Cliente');
+      const productData: Record<string, { description: string; price: number }> = {
+        p1: { description: 'Café Especial 500 g', price: 32.9 },
+        p2: { description: 'Leite Integral 1 L', price: 6.49 },
+        p3: { description: 'Pão de Queijo Artesanal', price: 12.5 },
+      };
+      const couponItems = items.map((item) => {
+        const product = productData[String(item.productId)] ?? {
+          description: 'Produto',
+          price: Number(item.unitPrice ?? 0),
+        };
+        const quantity = Number(item.quantity ?? 0);
+        const unitPrice = Number(item.unitPrice ?? product.price);
+        return {
+          description: product.description,
+          quantity: quantity.toFixed(3),
+          unitPrice: unitPrice.toFixed(2),
+          total: (quantity * unitPrice).toFixed(2),
+        };
+      });
+      statement.coupons.unshift({
+        saleId,
+        saleNumber,
+        soldAt,
+        total: total.toFixed(2),
+        creditAmount: creditAmount.toFixed(2),
+        amountPaid: '0.00',
+        amountDue: creditAmount.toFixed(2),
+        receivableId: crypto.randomUUID(),
+        items: couponItems,
+      });
+      statement.totalPurchased = (Number(statement.totalPurchased) + total).toFixed(2);
+      statement.totalDue = (Number(statement.totalDue) + creditAmount).toFixed(2);
+      demoStatements[customerId] = statement;
+      credit = {
+        customerId,
+        customerName: customer?.name ?? 'Cliente',
+        saleCreditAmount: creditAmount.toFixed(2),
+        totalOpenAmount: statement.totalDue,
+      };
+    }
+    return {
+      orderId: crypto.randomUUID(),
+      orderNumber: `PED-DEMO-${String(Date.now()).slice(-6)}`,
+      saleId,
+      saleNumber,
+      total: total.toFixed(2),
+      itemCount: items.length,
+      paymentCount: payments.length,
+      soldAt,
+      issuer: {
+        tradeName: 'ERP Híbrido Mercado',
+        legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.',
+        taxId: '01027058000191',
+      },
+      credit,
+    };
+  }
   if (path.includes('/checkout'))
     return {
       orderId: '018f4f12-2222-7222-8222-000000000501',
@@ -297,6 +1160,11 @@ export function demoResponse(path: string): unknown {
       itemCount: 3,
       paymentCount: 1,
       soldAt: new Date().toISOString(),
+      issuer: {
+        tradeName: 'ERP Híbrido Mercado',
+        legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.',
+        taxId: '01027058000191',
+      },
     };
   if (path.startsWith('/fiscal/nfce/'))
     return {
@@ -310,4 +1178,81 @@ export function demoResponse(path: string): unknown {
       total: '87.30',
     };
   throw new Error('Demonstração sem resposta para este recurso');
+}
+
+function demoBody(body?: BodyInit | null) {
+  if (typeof body !== 'string') return {} as Record<string, unknown>;
+  try {
+    return JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+}
+
+function demoText(value: unknown) {
+  return typeof value === 'string' || typeof value === 'number' ? `${value}` : '';
+}
+
+function readSavedDemoCustomers() {
+  if (typeof localStorage === 'undefined') return [] as Array<{ id: string; name: string }>;
+  try {
+    const saved = JSON.parse(localStorage.getItem('erp:demo-pos-customers') ?? '[]') as unknown;
+    return Array.isArray(saved)
+      ? saved.filter(
+          (item): item is { id: string; name: string } =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof (item as { id?: unknown }).id === 'string' &&
+            typeof (item as { name?: unknown }).name === 'string',
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDemoCustomers() {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(
+    'erp:demo-pos-customers',
+    JSON.stringify(
+      demoPosCustomers.filter(({ id }) => !demoBaseCustomers.some((item) => item.id === id)),
+    ),
+  );
+}
+
+function emptyStatement(id: string, name: string): CustomerCreditStatement {
+  return {
+    customer: { id, name, creditLimit: '0.00' },
+    period: {
+      from: new Date().toISOString().slice(0, 8) + '01',
+      to: new Date().toISOString().slice(0, 10),
+    },
+    totalPurchased: '0.00',
+    totalPaid: '0.00',
+    totalDue: '0.00',
+    lastPayment: null,
+    settlements: [],
+    coupons: [],
+  };
+}
+
+function demoOrder(id: string, number: string, status: string, customer: string, total: string) {
+  return {
+    id,
+    number,
+    status,
+    origin: 'sales_quote',
+    customer: { id: `customer-${id}`, name: customer },
+    seller: { id: 'seller-1', name: 'Marina Costa' },
+    paymentMethod: { id: 'method-1', name: 'PIX' },
+    subtotal: total,
+    discount: '0',
+    surcharge: '0',
+    freight: '0',
+    total,
+    notes: null,
+    items: [],
+    createdAt: new Date().toISOString(),
+  };
 }

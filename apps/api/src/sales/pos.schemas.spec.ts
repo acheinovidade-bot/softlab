@@ -1,4 +1,4 @@
-import { posCheckoutSchema } from './pos.schemas';
+import { posCheckoutSchema, posSettingsSchema } from './pos.schemas';
 
 const id = (suffix: string) => `018f4f12-2222-7222-8222-${suffix.padStart(12, '0')}`;
 const checkout = {
@@ -13,7 +13,9 @@ describe('POS checkout schema', () => {
   it('normalizes quantities, discounts and payments', () => {
     const parsed = posCheckoutSchema.parse(checkout);
     expect(parsed.items[0]).toMatchObject({ quantity: 2, unitPrice: null, discount: 1.5 });
+    expect(parsed.items[0]?.lotId).toBeNull();
     expect(parsed.payments[0]?.amount).toBe(18.5);
+    expect(parsed.controlLotExpiryAtPos).toBe(false);
   });
 
   it('rejects repeated products and payment methods', () => {
@@ -32,5 +34,37 @@ describe('POS checkout schema', () => {
       posCheckoutSchema.parse({ ...checkout, creditDueDate: '2026-09-30' }).creditDueDate,
     ).toBe('2026-09-30');
     expect(() => posCheckoutSchema.parse({ ...checkout, creditDueDate: '30/09/2026' })).toThrow();
+  });
+  it('allows a sale without seller and normalizes freight and surcharge', () => {
+    expect(
+      posCheckoutSchema.parse({ ...checkout, sellerId: null, freight: '4.50', surcharge: '2.25' }),
+    ).toMatchObject({ sellerId: null, freight: 4.5, surcharge: 2.25 });
+  });
+});
+
+describe('POS settings schema', () => {
+  it('accepts branch defaults with an optional customer', () => {
+    expect(
+      posSettingsSchema.parse({
+        defaultCustomerId: null,
+        defaultSellerId: id('2'),
+        defaultLocationId: id('3'),
+        sellerMode: 'default',
+      }),
+    ).toEqual({
+      defaultCustomerId: null,
+      defaultSellerId: id('2'),
+      defaultLocationId: id('3'),
+      sellerMode: 'default',
+    });
+  });
+  it('allows the operator to select a seller in each sale', () => {
+    expect(
+      posSettingsSchema.parse({
+        defaultSellerId: null,
+        defaultLocationId: id('3'),
+        sellerMode: 'per_sale',
+      }),
+    ).toMatchObject({ defaultSellerId: null, sellerMode: 'per_sale' });
   });
 });

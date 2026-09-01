@@ -10,7 +10,7 @@ export function setAccessToken(token: string | null): void {
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('demo'))
-    return demoResponse(path) as T;
+    return demoResponse(path, options.method ?? 'GET', options.body) as T;
   const headers = new Headers(options.headers);
   if (options.body && !headers.has('content-type')) headers.set('content-type', 'application/json');
   if (accessToken) headers.set('authorization', `Bearer ${accessToken}`);

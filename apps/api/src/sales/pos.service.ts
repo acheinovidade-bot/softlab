@@ -12,6 +12,7 @@ import { PrismaService } from '../infrastructure/database/prisma.service';
 import {
   customerStatementQuerySchema,
   posCheckoutSchema,
+  posSettingsSchema,
   receiveCreditSchema,
 } from './pos.schemas';
 
@@ -20,7 +21,16 @@ export class PosService {
   constructor(private readonly prisma: PrismaService) {}
 
   async lookups(auth: AccessTokenPayload) {
-    const [customers, sellers, products, paymentMethods, warehouses] = await Promise.all([
+    const [
+      customers,
+      sellers,
+      products,
+      paymentMethods,
+      cardOperators,
+      warehouses,
+      settings,
+      issuer,
+    ] = await Promise.all([
       this.prisma.customer.findMany({
         where: { companyId: auth.companyId, active: true, deletedAt: null },
         orderBy: { legalName: 'asc' },
@@ -51,26 +61,49 @@ export class PosService {
           code: true,
           barcode: true,
           description: true,
+          unitId: true,
           openPrice: true,
           controlsLot: true,
+          controlsExpiry: true,
+          selectLotAtPos: true,
         },
       }),
       this.prisma.paymentMethod.findMany({
         where: { companyId: auth.companyId, active: true },
         orderBy: { name: 'asc' },
-        select: { id: true, code: true, name: true, type: true },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          type: true,
+          cardOperatorId: true,
+          maxInstallments: true,
+        },
+      }),
+      this.prisma.cardOperator.findMany({
+        where: { companyId: auth.companyId, active: true },
+        select: {
+          id: true,
+          name: true,
+          debitRate: true,
+          creditRate: true,
+          installmentRate: true,
+          settlementDays: true,
+        },
       }),
       this.prisma.warehouse.findMany({
         where: { companyId: auth.companyId, branchId: auth.branchId },
         select: { id: true },
       }),
+      this.settings(auth),
+      this.receiptIssuer(auth),
     ]);
     const locations = await this.prisma.stockLocation.findMany({
       where: { companyId: auth.companyId, warehouseId: { in: warehouses.map(({ id }) => id) } },
       orderBy: { name: 'asc' },
       select: { id: true, code: true, name: true },
     });
-    const [prices, balances] = await Promise.all([
+    const [prices, balances, units] = await Promise.all([
       this.prisma.productPrice.findMany({
         where: {
           companyId: auth.companyId,
@@ -88,22 +121,141 @@ export class PosService {
           locationId: { in: locations.map(({ id }) => id) },
         },
       }),
+      this.prisma.unit.findMany({
+        where: { companyId: auth.companyId, id: { in: products.map(({ unitId }) => unitId) } },
+        select: { id: true, code: true },
+      }),
     ]);
+    const lots = await this.prisma.stockLot.findMany({
+      where: {
+        companyId: auth.companyId,
+        id: { in: balances.flatMap(({ lotId }) => (lotId ? [lotId] : [])) },
+      },
+      orderBy: [{ expiresAt: 'asc' }, { lotNumber: 'asc' }],
+    });
+    const posBalances = settings.defaultLocationId
+      ? balances.filter(({ locationId }) => locationId === settings.defaultLocationId)
+      : [];
     return {
       customers: customers.map((item) => ({ id: item.id, name: item.tradeName ?? item.legalName })),
       sellers,
-      paymentMethods,
+      paymentMethods: paymentMethods.map((method) => {
+        const operator = cardOperators.find(({ id }) => id === method.cardOperatorId);
+        return {
+          ...method,
+          cardConfiguration: operator
+            ? {
+                operatorName: operator.name,
+                debitRate: operator.debitRate,
+                creditRate: operator.creditRate,
+                installmentRate: operator.installmentRate,
+                settlementDays: operator.settlementDays,
+              }
+            : null,
+        };
+      }),
       locations,
+      settings,
+      issuer,
       products: products.map((product) => {
         const price = this.priceFor(prices, product.id, auth.branchId);
-        const available = balances
+        const available = posBalances
           .filter(({ productId }) => productId === product.id)
           .reduce(
             (sum, balance) => sum.add(balance.quantity.sub(balance.reservedQuantity)),
             new Prisma.Decimal(0),
           );
-        return { ...product, salePrice: price?.salePrice ?? null, availableQuantity: available };
+        return {
+          ...product,
+          unitCode: units.find(({ id }) => id === product.unitId)?.code ?? 'UN',
+          salePrice: price?.salePrice ?? null,
+          availableQuantity: available,
+          lots: lots
+            .filter(({ productId }) => productId === product.id)
+            .map((lot) => ({
+              id: lot.id,
+              lotNumber: lot.lotNumber,
+              expiresAt: lot.expiresAt,
+              availableQuantity: posBalances
+                .filter(({ lotId }) => lotId === lot.id)
+                .reduce(
+                  (sum, balance) => sum.add(balance.quantity.sub(balance.reservedQuantity)),
+                  new Prisma.Decimal(0),
+                ),
+            })),
+        };
       }),
+    };
+  }
+
+  async settings(auth: AccessTokenPayload) {
+    const current = await this.prisma.posSetting.findUnique({
+      where: { companyId_branchId: { companyId: auth.companyId, branchId: auth.branchId } },
+    });
+    return {
+      defaultCustomerId: current?.defaultCustomerId ?? null,
+      defaultSellerId: current?.defaultSellerId ?? null,
+      sellerMode: current?.sellerMode ?? 'default',
+      defaultLocationId: current?.defaultLocationId ?? null,
+    };
+  }
+
+  async updateSettings(auth: AccessTokenPayload, input: unknown) {
+    const data = posSettingsSchema.parse(input);
+    const [customer, seller, location] = await Promise.all([
+      data.defaultCustomerId
+        ? this.prisma.customer.findFirst({
+            where: {
+              id: data.defaultCustomerId,
+              companyId: auth.companyId,
+              active: true,
+              deletedAt: null,
+            },
+          })
+        : Promise.resolve(true),
+      data.defaultSellerId
+        ? this.prisma.employee.findFirst({
+            where: {
+              id: data.defaultSellerId,
+              companyId: auth.companyId,
+              active: true,
+              deletedAt: null,
+              OR: [{ branchId: auth.branchId }, { branchId: null }],
+            },
+          })
+        : Promise.resolve(true),
+      this.prisma.stockLocation.findFirst({
+        where: { id: data.defaultLocationId, companyId: auth.companyId },
+      }),
+    ]);
+    const warehouse = location
+      ? await this.prisma.warehouse.findFirst({
+          where: { id: location.warehouseId, companyId: auth.companyId, branchId: auth.branchId },
+        })
+      : null;
+    if (!customer) throw new NotFoundException('Cliente padrão não encontrado');
+    if (!seller) throw new NotFoundException('Vendedor padrão não encontrado');
+    if (!location || !warehouse) throw new NotFoundException('Local padrão fora da filial');
+    const now = new Date();
+    const saved = await this.prisma.posSetting.upsert({
+      where: { companyId_branchId: { companyId: auth.companyId, branchId: auth.branchId } },
+      create: {
+        id: uuidV7(),
+        companyId: auth.companyId,
+        branchId: auth.branchId,
+        ...data,
+        createdBy: auth.sub,
+        updatedBy: auth.sub,
+        createdAt: now,
+        updatedAt: now,
+      },
+      update: { ...data, updatedBy: auth.sub, updatedAt: now },
+    });
+    return {
+      defaultCustomerId: saved.defaultCustomerId,
+      defaultSellerId: saved.defaultSellerId,
+      sellerMode: saved.sellerMode,
+      defaultLocationId: saved.defaultLocationId,
     };
   }
 
@@ -116,6 +268,7 @@ export class PosService {
       throw new ForbiddenException('Operador sem permissão para desconto no PDV');
     const replay = await this.replay(auth, data.idempotencyKey, origin);
     if (replay) return replay;
+    const issuer = await this.receiptIssuer(auth);
     const [customer, seller, location, methods, products] = await Promise.all([
       data.customerId
         ? this.prisma.customer.findFirst({
@@ -127,15 +280,17 @@ export class PosService {
             },
           })
         : Promise.resolve(true),
-      this.prisma.employee.findFirst({
-        where: {
-          id: data.sellerId,
-          companyId: auth.companyId,
-          active: true,
-          deletedAt: null,
-          OR: [{ branchId: auth.branchId }, { branchId: null }],
-        },
-      }),
+      data.sellerId
+        ? this.prisma.employee.findFirst({
+            where: {
+              id: data.sellerId,
+              companyId: auth.companyId,
+              active: true,
+              deletedAt: null,
+              OR: [{ branchId: auth.branchId }, { branchId: null }],
+            },
+          })
+        : Promise.resolve(true),
       this.prisma.stockLocation.findFirst({
         where: { id: data.locationId, companyId: auth.companyId },
       }),
@@ -165,6 +320,22 @@ export class PosService {
     if (!location || !warehouse) throw new NotFoundException('Localização fora da filial');
     if (methods.length !== data.payments.length)
       throw new NotFoundException('Forma de pagamento não encontrada');
+    for (const payment of data.payments) {
+      const method = methods.find(({ id }) => id === payment.paymentMethodId);
+      if (method && payment.installments > method.maxInstallments)
+        throw new BadRequestException(
+          `${method.name} permite no máximo ${method.maxInstallments} parcela(s)`,
+        );
+    }
+    const cardOperators = await this.prisma.cardOperator.findMany({
+      where: {
+        companyId: auth.companyId,
+        active: true,
+        id: {
+          in: methods.flatMap(({ cardOperatorId }) => (cardOperatorId ? [cardOperatorId] : [])),
+        },
+      },
+    });
     if (products.length !== data.items.length)
       throw new NotFoundException('Produto não encontrado');
     const prices = await this.prisma.productPrice.findMany({
@@ -191,15 +362,21 @@ export class PosService {
         throw new BadRequestException(`Desconto maior que o item ${product.description}`);
       if (price?.minimumPrice && gross.sub(discount).div(item.quantity).lt(price.minimumPrice))
         throw new ConflictException(`Preço abaixo do mínimo para ${product.description}`);
+      if (data.controlLotExpiryAtPos && product.selectLotAtPos && !item.lotId)
+        throw new BadRequestException(`Selecione o lote de ${product.description}`);
+      if (item.lotId && !product.controlsLot)
+        throw new BadRequestException(`${product.description} não controla lote`);
       return {
         product,
+        lotId: item.lotId,
         quantity: new Prisma.Decimal(item.quantity),
         unitPrice,
         discount,
         total: gross.sub(discount),
       };
     });
-    const total = lines.reduce((sum, line) => sum.add(line.total), new Prisma.Decimal(0));
+    const subtotal = lines.reduce((sum, line) => sum.add(line.total), new Prisma.Decimal(0));
+    const total = subtotal.add(data.surcharge).add(data.freight);
     const paid = data.payments.reduce(
       (sum, payment) => sum.add(payment.amount),
       new Prisma.Decimal(0),
@@ -250,7 +427,18 @@ export class PosService {
         const now = new Date();
         const orderId = uuidV7();
         const saleId = uuidV7();
-        const orderNumber = `${origin === 'food' ? 'FOOD' : 'PDV'}-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${orderId.slice(0, 6).toUpperCase()}`;
+        let terminalOrderNumber: bigint | null = null;
+        if (data.terminalId) {
+          const updated = await tx.fiscalPosTerminal.updateMany({
+            where: { id: data.terminalId, companyId: auth.companyId, branchId: auth.branchId, active: true },
+            data: { lastOrderNumber: { increment: 1 }, updatedAt: now },
+          });
+          if (updated.count !== 1) throw new NotFoundException('PDV fiscal não encontrado para numerar o pedido');
+          terminalOrderNumber = (await tx.fiscalPosTerminal.findUniqueOrThrow({ where: { id: data.terminalId }, select: { lastOrderNumber: true } })).lastOrderNumber;
+        }
+        const orderNumber = terminalOrderNumber === null
+          ? `${origin === 'food' ? 'FOOD' : 'PDV'}-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${orderId.slice(0, 6).toUpperCase()}`
+          : `PDV-${terminalOrderNumber.toString().padStart(9, '0')}`;
         const saleNumber = `VEN-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${saleId.slice(0, 6).toUpperCase()}`;
         await tx.order.create({
           data: {
@@ -265,12 +453,12 @@ export class PosService {
             number: orderNumber,
             origin,
             status: 'completed',
-            subtotal: total.add(
+            subtotal: subtotal.add(
               lines.reduce((sum, line) => sum.add(line.discount), new Prisma.Decimal(0)),
             ),
             discount: lines.reduce((sum, line) => sum.add(line.discount), new Prisma.Decimal(0)),
-            surcharge: 0,
-            freight: 0,
+            surcharge: data.surcharge,
+            freight: data.freight,
             total,
             notes: data.notes,
             createdAt: now,
@@ -286,7 +474,7 @@ export class PosService {
                 orderId,
                 productId: line.product.id,
                 locationId: data.locationId,
-                lotId: null,
+                lotId: line.lotId,
                 description: line.product.description,
                 quantity: line.quantity,
                 unitPrice: line.unitPrice,
@@ -338,6 +526,7 @@ export class PosService {
             data.locationId,
             line.product,
             line.quantity,
+            line.lotId,
             now,
           );
           if (allocations.length === 1 && allocations[0]?.lotId)
@@ -380,19 +569,35 @@ export class PosService {
               });
           }
         }
-        const paymentRows = data.payments.map((payment, index) => ({
-          id: uuidV7(),
-          companyId: auth.companyId,
-          branchId: auth.branchId,
-          orderId,
-          paymentMethodId: payment.paymentMethodId,
-          amount: new Prisma.Decimal(payment.amount),
-          status: creditMethodIds.has(payment.paymentMethodId) ? 'pending' : 'paid',
-          idempotencyKey: `${origin}:${data.idempotencyKey}:${index}`,
-          paidAt: creditMethodIds.has(payment.paymentMethodId) ? null : now,
-          createdAt: now,
-          updatedAt: now,
-        }));
+        const paymentRows = data.payments.map((payment, index) => {
+          const method = methods.find(({ id }) => id === payment.paymentMethodId)!;
+          const operator = cardOperators.find(({ id }) => id === method.cardOperatorId);
+          const rate = operator
+            ? method.type === 'debit_card'
+              ? operator.debitRate
+              : method.type === 'credit_card'
+                ? operator.creditRate.add(operator.installmentRate.mul(payment.installments - 1))
+                : new Prisma.Decimal(0)
+            : new Prisma.Decimal(0);
+          const amount = new Prisma.Decimal(payment.amount);
+          const feeAmount = amount.mul(rate).div(100).toDecimalPlaces(4);
+          return {
+            id: uuidV7(),
+            companyId: auth.companyId,
+            branchId: auth.branchId,
+            orderId,
+            paymentMethodId: payment.paymentMethodId,
+            amount,
+            installments: payment.installments,
+            feeAmount,
+            netAmount: amount.sub(feeAmount),
+            status: creditMethodIds.has(payment.paymentMethodId) ? 'pending' : 'paid',
+            idempotencyKey: `${origin}:${data.idempotencyKey}:${index}`,
+            paidAt: creditMethodIds.has(payment.paymentMethodId) ? null : now,
+            createdAt: now,
+            updatedAt: now,
+          };
+        });
         await tx.payment.createMany({ data: paymentRows });
         if (creditAmount.gt(0) && data.customerId && receivableAccount) {
           const dueDate = data.creditDueDate
@@ -450,6 +655,17 @@ export class PosService {
                 updatedAt: now,
               })),
           });
+        const openCredit =
+          creditAmount.gt(0) && selectedCustomer
+            ? await tx.accountReceivable.aggregate({
+                where: {
+                  companyId: auth.companyId,
+                  customerId: selectedCustomer.id,
+                  status: { in: ['open', 'partial'] },
+                },
+                _sum: { openAmount: true },
+              })
+            : null;
         await tx.auditLog.create({
           data: {
             id: uuidV7(),
@@ -481,6 +697,16 @@ export class PosService {
           itemCount: lines.length,
           paymentCount: data.payments.length,
           soldAt: now,
+          issuer,
+          credit:
+            creditAmount.gt(0) && selectedCustomer
+              ? {
+                  customerId: selectedCustomer.id,
+                  customerName: selectedCustomer.tradeName?.trim() || selectedCustomer.legalName,
+                  saleCreditAmount: creditAmount.toFixed(2),
+                  totalOpenAmount: new Prisma.Decimal(openCredit?._sum.openAmount ?? 0).toFixed(2),
+                }
+              : null,
         };
       });
     } catch (error) {
@@ -514,7 +740,7 @@ export class PosService {
       orderBy: { createdAt: 'desc' },
     });
     const orderIds = orders.map(({ id }) => id);
-    const [sales, items, receivables, totalDebt] = await Promise.all([
+    const [sales, items, receivables, allCustomerReceivables, totalDebt] = await Promise.all([
       this.prisma.sale.findMany({
         where: { companyId: auth.companyId, orderId: { in: orderIds } },
       }),
@@ -525,13 +751,20 @@ export class PosService {
       this.prisma.accountReceivable.findMany({
         where: { companyId: auth.companyId, customerId, orderId: { in: orderIds } },
       }),
+      this.prisma.accountReceivable.findMany({
+        where: { companyId: auth.companyId, branchId: auth.branchId, customerId },
+      }),
       this.prisma.accountReceivable.aggregate({
         where: { companyId: auth.companyId, customerId, status: { in: ['open', 'partial'] } },
         _sum: { openAmount: true },
       }),
     ]);
     const settlementRows = await this.prisma.financialSettlement.findMany({
-      where: { companyId: auth.companyId, receivableId: { in: receivables.map(({ id }) => id) } },
+      where: {
+        companyId: auth.companyId,
+        receivableId: { in: allCustomerReceivables.map(({ id }) => id) },
+      },
+      orderBy: { settledAt: 'desc' },
     });
     const coupons = sales.map((sale) => {
       const receivable = receivables.find(({ orderId }) => orderId === sale.orderId);
@@ -559,6 +792,16 @@ export class PosService {
           })),
       };
     });
+    const settlements = settlementRows.map((row) => {
+      const account = allCustomerReceivables.find(({ id }) => id === row.receivableId);
+      return {
+        id: row.id,
+        settledAt: row.settledAt,
+        amount: row.principalAmount,
+        account: account?.description ?? 'Conta recebida',
+        accountStatus: account?.status ?? 'paid',
+      };
+    });
     return {
       customer: {
         id: customer.id,
@@ -569,6 +812,8 @@ export class PosService {
       totalPurchased: coupons.reduce((sum, coupon) => sum.add(coupon.total), new Prisma.Decimal(0)),
       totalPaid: coupons.reduce((sum, coupon) => sum.add(coupon.amountPaid), new Prisma.Decimal(0)),
       totalDue: totalDebt._sum.openAmount ?? new Prisma.Decimal(0),
+      lastPayment: settlements[0] ?? null,
+      settlements,
       coupons,
     };
   }
@@ -682,6 +927,48 @@ export class PosService {
     });
   }
 
+  async receiveCustomerCredit(auth: AccessTokenPayload, customerId: string, input: unknown) {
+    const data = receiveCreditSchema.parse(input);
+    const replay = await this.prisma.financialSettlement.findFirst({
+      where: { companyId: auth.companyId, idempotencyKey: `credit-customer:${data.idempotencyKey}:0` },
+    });
+    if (replay) return { paidAmount: replay.principalAmount.toString(), settledAt: replay.settledAt, totalOpenAmount: null, allocations: [] };
+    const [customer, method] = await Promise.all([
+      this.prisma.customer.findFirst({ where: { id: customerId, companyId: auth.companyId, active: true, deletedAt: null } }),
+      this.prisma.paymentMethod.findFirst({ where: { id: data.paymentMethodId, companyId: auth.companyId, active: true, type: { not: 'credit_account' } } }),
+    ]);
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    if (!method) throw new NotFoundException('Forma de recebimento não encontrada');
+    const requested = new Prisma.Decimal(data.amount);
+    return this.serializable(async (tx) => {
+      const receivables = await tx.accountReceivable.findMany({
+        where: { companyId: auth.companyId, branchId: auth.branchId, customerId, status: { in: ['open', 'partial'] } },
+        orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+      });
+      const totalOpen = receivables.reduce((sum, account) => sum.add(account.openAmount), new Prisma.Decimal(0));
+      if (requested.gt(totalOpen)) throw new BadRequestException('Pagamento maior que o saldo total do cliente');
+      const registers = await tx.cashRegister.findMany({ where: { companyId: auth.companyId, branchId: auth.branchId, active: true }, select: { id: true } });
+      const session = await tx.cashSession.findFirst({ where: { companyId: auth.companyId, operatorId: auth.sub, status: 'open', cashRegisterId: { in: registers.map(({ id }) => id) } } });
+      const now = new Date();
+      let remaining = requested;
+      const allocations: Array<{ receivableId: string; orderId: string | null; description: string; amount: string; remaining: string }> = [];
+      for (let index = 0; index < receivables.length && remaining.gt(0); index += 1) {
+        const account = receivables[index]!;
+        const allocated = Prisma.Decimal.min(account.openAmount, remaining);
+        const openAmount = account.openAmount.sub(allocated);
+        await tx.financialSettlement.create({ data: { id: uuidV7(), companyId: auth.companyId, payableId: null, receivableId: account.id, bankAccountId: null, cashSessionId: session?.id ?? null, paymentMethodId: method.id, receivedBy: auth.sub, principalAmount: allocated, interest: 0, discount: 0, settledAt: now, idempotencyKey: `credit-customer:${data.idempotencyKey}:${index}`, createdAt: now, updatedAt: now } });
+        await tx.accountReceivable.update({ where: { id: account.id }, data: { openAmount, status: openAmount.isZero() ? 'paid' : 'partial', updatedAt: now } });
+        if (account.orderId) {
+          const payment = await tx.payment.create({ data: { id: uuidV7(), companyId: auth.companyId, branchId: auth.branchId, orderId: account.orderId, paymentMethodId: method.id, amount: allocated, status: 'paid', idempotencyKey: `credit-customer-receipt:${data.idempotencyKey}:${index}`, paidAt: now, createdAt: now, updatedAt: now } });
+          if (session) await tx.cashMovement.create({ data: { id: uuidV7(), companyId: auth.companyId, cashSessionId: session.id, paymentId: payment.id, paymentMethodId: method.id, type: 'receipt', amount: allocated, description: `Recebimento crediário ${account.description}`, occurredAt: now, createdBy: auth.sub, createdAt: now, updatedAt: now } });
+        }
+        allocations.push({ receivableId: account.id, orderId: account.orderId, description: account.description, amount: allocated.toFixed(2), remaining: openAmount.toFixed(2) });
+        remaining = remaining.sub(allocated);
+      }
+      return { paidAmount: requested.toFixed(2), settledAt: now, totalOpenAmount: totalOpen.sub(requested).toFixed(2), allocations };
+    });
+  }
+
   private async allocateStock(
     tx: Prisma.TransactionClient,
     auth: AccessTokenPayload,
@@ -694,6 +981,7 @@ export class PosService {
       allowsNegativeStock: boolean;
     },
     quantity: Prisma.Decimal,
+    selectedLotId: string | null,
     now: Date,
   ) {
     if (!product.controlsLot) {
@@ -746,6 +1034,7 @@ export class PosService {
         companyId: auth.companyId,
         productId: product.id,
         id: { in: balances.flatMap(({ lotId }) => (lotId ? [lotId] : [])) },
+        ...(selectedLotId ? { id: selectedLotId } : {}),
       },
       orderBy: [{ expiresAt: 'asc' }, { manufacturedAt: 'asc' }],
     });
@@ -769,7 +1058,11 @@ export class PosService {
       remaining = remaining.sub(used);
     }
     if (remaining.gt(0))
-      throw new ConflictException(`Estoque FEFO insuficiente para ${product.description}`);
+      throw new ConflictException(
+        selectedLotId
+          ? `Lote selecionado sem saldo válido para ${product.description}`
+          : `Estoque FEFO insuficiente para ${product.description}`,
+      );
     return allocations;
   }
   private priceFor(
@@ -796,7 +1089,7 @@ export class PosService {
       },
     });
     if (!payment) return null;
-    const [order, sale, itemCount, paymentCount] = await Promise.all([
+    const [order, sale, itemCount, paymentCount, issuer] = await Promise.all([
       this.prisma.order.findFirst({
         where: { id: payment.orderId, companyId: auth.companyId, branchId: auth.branchId },
       }),
@@ -807,8 +1100,33 @@ export class PosService {
         where: { orderId: payment.orderId, companyId: auth.companyId },
       }),
       this.prisma.payment.count({ where: { orderId: payment.orderId, companyId: auth.companyId } }),
+      this.receiptIssuer(auth),
     ]);
     if (!order || !sale) throw new ConflictException('Checkout idempotente inconsistente');
+    const receivable = order.customerId
+      ? await this.prisma.accountReceivable.findFirst({
+          where: {
+            companyId: auth.companyId,
+            customerId: order.customerId,
+            orderId: order.id,
+          },
+        })
+      : null;
+    const [customer, openCredit] = receivable
+      ? await Promise.all([
+          this.prisma.customer.findFirst({
+            where: { id: receivable.customerId!, companyId: auth.companyId },
+          }),
+          this.prisma.accountReceivable.aggregate({
+            where: {
+              companyId: auth.companyId,
+              customerId: receivable.customerId!,
+              status: { in: ['open', 'partial'] },
+            },
+            _sum: { openAmount: true },
+          }),
+        ])
+      : [null, null];
     return {
       orderId: order.id,
       orderNumber: order.number,
@@ -818,7 +1136,25 @@ export class PosService {
       itemCount,
       paymentCount,
       soldAt: sale.soldAt,
+      issuer,
+      credit:
+        receivable && customer
+          ? {
+              customerId: customer.id,
+              customerName: customer.tradeName?.trim() || customer.legalName,
+              saleCreditAmount: receivable.amount.toFixed(2),
+              totalOpenAmount: new Prisma.Decimal(openCredit?._sum.openAmount ?? 0).toFixed(2),
+            }
+          : null,
     };
+  }
+  private async receiptIssuer(auth: AccessTokenPayload) {
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: auth.branchId, companyId: auth.companyId, deletedAt: null },
+      select: { tradeName: true, legalName: true, taxId: true },
+    });
+    if (!branch) throw new NotFoundException('Dados da empresa emitente não encontrados');
+    return branch;
   }
   private async serializable<T>(
     operation: (tx: Prisma.TransactionClient) => Promise<T>,

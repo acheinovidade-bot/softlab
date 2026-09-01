@@ -78,6 +78,19 @@ model Company {
   taxId     String    @unique @map("tax_id") @db.VarChar(14)
   status    String    @db.VarChar(20)
   timezone  String    @db.VarChar(80)
+  stateRegistration     String?   @map("state_registration") @db.VarChar(40)
+  municipalRegistration String?   @map("municipal_registration") @db.VarChar(40)
+  taxRegime             String?   @map("tax_regime") @db.VarChar(40)
+  cnae                   String?   @db.VarChar(12)
+  phone                  String?   @db.VarChar(30)
+  email                  String?   @db.VarChar(254)
+  postalCode             String?   @map("postal_code") @db.VarChar(8)
+  street                 String?   @db.VarChar(180)
+  addressNumber          String?   @map("address_number") @db.VarChar(30)
+  complement             String?   @db.VarChar(120)
+  district               String?   @db.VarChar(120)
+  city                   String?   @db.VarChar(120)
+  state                  String?   @db.Char(2)
   createdAt DateTime  @map("created_at") @db.Timestamptz
   updatedAt DateTime  @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
@@ -311,6 +324,8 @@ model Address {
   city       String   @db.VarChar(120)
   state      String   @db.Char(2)
   country    String   @db.Char(2)
+  latitude   Decimal? @db.Decimal(10, 7)
+  longitude  Decimal? @db.Decimal(10, 7)
   createdAt  DateTime @map("created_at") @db.Timestamptz
   updatedAt  DateTime @map("updated_at") @db.Timestamptz
 
@@ -455,6 +470,7 @@ model Product {
   productType         String    @map("product_type") @db.VarChar(20)
   controlsLot         Boolean   @map("controls_lot")
   controlsExpiry      Boolean   @map("controls_expiry")
+  selectLotAtPos      Boolean   @default(false) @map("select_lot_at_pos")
   allowsNegativeStock Boolean   @map("allows_negative_stock")
   openPrice           Boolean   @map("open_price")
   imageStorageKey     String?   @map("image_storage_key")
@@ -977,18 +993,61 @@ model OrderItem {
 }
 
 model PaymentMethod {
-  id        String   @id @db.Uuid
-  companyId String   @map("company_id") @db.Uuid
-  code      String   @db.VarChar(40)
-  name      String   @db.VarChar(100)
-  type      String   @db.VarChar(30)
-  active    Boolean
-  createdAt DateTime @map("created_at") @db.Timestamptz
-  updatedAt DateTime @map("updated_at") @db.Timestamptz
+  id                String   @id @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  cardOperatorId    String?  @map("card_operator_id") @db.Uuid
+  code              String   @db.VarChar(40)
+  name              String   @db.VarChar(100)
+  type              String   @db.VarChar(30)
+  fiscalCode        String   @default("99") @map("fiscal_code") @db.VarChar(4)
+  maxInstallments   Int      @default(1) @map("max_installments")
+  createsReceivable Boolean  @default(false) @map("creates_receivable")
+  active            Boolean
+  createdAt         DateTime @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz
 
   @@unique([companyId, code])
   @@unique([id, companyId])
+  @@index([companyId, cardOperatorId], map: "payment_methods_card_operator_idx")
   @@map("payment_methods")
+}
+
+model CardOperator {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  code            String   @db.VarChar(40)
+  name            String   @db.VarChar(120)
+  taxId           String?  @map("tax_id") @db.VarChar(14)
+  debitRate       Decimal  @default(0) @map("debit_rate") @db.Decimal(9, 4)
+  creditRate      Decimal  @default(0) @map("credit_rate") @db.Decimal(9, 4)
+  installmentRate Decimal  @default(0) @map("installment_rate") @db.Decimal(9, 4)
+  settlementDays  Int      @default(1) @map("settlement_days")
+  active          Boolean  @default(true)
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, code])
+  @@unique([id, companyId])
+  @@index([companyId, active], map: "card_operators_company_active_idx")
+  @@map("card_operators")
+}
+
+model PosSetting {
+  id                String   @id @db.Uuid
+  companyId         String   @map("company_id") @db.Uuid
+  branchId          String   @map("branch_id") @db.Uuid
+  defaultCustomerId String?  @map("default_customer_id") @db.Uuid
+  defaultSellerId   String?  @map("default_seller_id") @db.Uuid
+  sellerMode        String   @default("default") @map("seller_mode") @db.VarChar(20)
+  defaultLocationId String?  @map("default_location_id") @db.Uuid
+  createdBy         String   @map("created_by") @db.Uuid
+  updatedBy         String   @map("updated_by") @db.Uuid
+  createdAt         DateTime @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId])
+  @@index([companyId, branchId], map: "pos_settings_company_branch_idx")
+  @@map("pos_settings")
 }
 
 model Payment {
@@ -998,6 +1057,9 @@ model Payment {
   orderId         String    @map("order_id") @db.Uuid
   paymentMethodId String    @map("payment_method_id") @db.Uuid
   amount          Decimal   @db.Decimal(19, 4)
+  installments    Int       @default(1)
+  feeAmount       Decimal   @default(0) @map("fee_amount") @db.Decimal(19, 4)
+  netAmount       Decimal   @default(0) @map("net_amount") @db.Decimal(19, 4)
   status          String    @db.VarChar(30)
   idempotencyKey  String    @map("idempotency_key") @db.VarChar(120)
   paidAt          DateTime? @map("paid_at") @db.Timestamptz
@@ -1240,18 +1302,20 @@ model FinancialSettlement {
 }
 
 model FoodTable {
-  id        String   @id @db.Uuid
-  companyId String   @map("company_id") @db.Uuid
-  branchId  String   @map("branch_id") @db.Uuid
-  code      String   @db.VarChar(30)
-  name      String   @db.VarChar(80)
-  capacity  Int
-  status    String   @db.VarChar(20)
-  active    Boolean
-  createdAt DateTime @map("created_at") @db.Timestamptz
-  updatedAt DateTime @map("updated_at") @db.Timestamptz
+  id          String   @id @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  branchId    String   @map("branch_id") @db.Uuid
+  code        String   @db.VarChar(30)
+  name        String   @db.VarChar(80)
+  capacity    Int
+  status      String   @db.VarChar(20)
+  active      Boolean
+  publicToken String   @map("public_token") @db.Uuid
+  createdAt   DateTime @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz
 
   @@unique([companyId, branchId, code])
+  @@unique([publicToken])
   @@unique([id, companyId])
   @@index([companyId, branchId, status], map: "food_tables_branch_status_idx")
   @@map("food_tables")
@@ -1291,7 +1355,7 @@ model FoodTabItem {
   total     Decimal  @db.Decimal(19, 4)
   notes     String?
   status    String   @db.VarChar(20)
-  createdBy String   @map("created_by") @db.Uuid
+  createdBy String?  @map("created_by") @db.Uuid
   createdAt DateTime @map("created_at") @db.Timestamptz
   updatedAt DateTime @map("updated_at") @db.Timestamptz
 
@@ -1316,10 +1380,38 @@ model FiscalSetting {
   @@map("fiscal_settings")
 }
 
+model FiscalPosTerminal {
+  id               String   @id @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  branchId         String   @map("branch_id") @db.Uuid
+  posNumber        Int      @map("pos_number")
+  description      String   @db.VarChar(160)
+  cashRegisterCode String   @map("cash_register_code") @db.VarChar(40)
+  cscToken         String   @map("csc_token") @db.VarChar(80)
+  cscCode          String   @map("csc_code") @db.VarChar(200)
+  onlineSeries     String   @map("online_series") @db.VarChar(10)
+  offlineSeries    String   @map("offline_series") @db.VarChar(10)
+  nfeSeries        String   @default("1") @map("nfe_series") @db.VarChar(10)
+  lastOrderNumber  BigInt   @default(0) @map("last_order_number")
+  lastNfceNumber   BigInt   @default(0) @map("last_nfce_number")
+  lastNfceOfflineNumber BigInt @default(0) @map("last_nfce_offline_number")
+  lastNfeNumber    BigInt   @default(0) @map("last_nfe_number")
+  active           Boolean
+  createdAt        DateTime @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, posNumber])
+  @@unique([companyId, branchId, onlineSeries])
+  @@unique([companyId, branchId, offlineSeries])
+  @@index([companyId, branchId, active], map: "fiscal_pos_terminals_branch_active_idx")
+  @@map("fiscal_pos_terminals")
+}
+
 model FiscalDocument {
   id                String    @id @db.Uuid
   companyId         String    @map("company_id") @db.Uuid
   branchId          String    @map("branch_id") @db.Uuid
+  posTerminalId     String?   @map("pos_terminal_id") @db.Uuid
   saleId            String?   @map("sale_id") @db.Uuid
   supplierInvoiceId String?   @map("supplier_invoice_id") @db.Uuid
   documentType      String    @map("document_type") @db.VarChar(10)
@@ -1341,6 +1433,7 @@ model FiscalDocument {
   @@unique([companyId, branchId, documentType, series, number])
   @@unique([id, companyId])
   @@index([companyId, branchId, saleId, status], map: "fiscal_documents_sale_status_idx")
+  @@index([companyId, branchId, posTerminalId, series], map: "fiscal_documents_terminal_series_idx")
   @@map("fiscal_documents")
 }
 
@@ -1365,4 +1458,59 @@ model FiscalDocumentItem {
 
   @@unique([fiscalDocumentId, sequence])
   @@map("fiscal_document_items")
+}
+
+model Driver {
+  id         String   @id @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  employeeId String?  @map("employee_id") @db.Uuid
+  name       String   @db.VarChar(160)
+  phone      String?  @db.VarChar(30)
+  active     Boolean
+  createdAt  DateTime @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([id, companyId])
+  @@index([companyId, active, name], map: "drivers_company_active_name_idx")
+  @@map("drivers")
+}
+
+model DeliveryZone {
+  id              String   @id @db.Uuid
+  companyId       String   @map("company_id") @db.Uuid
+  branchId        String   @map("branch_id") @db.Uuid
+  calculationType String   @map("calculation_type") @db.VarChar(20)
+  name            String   @db.VarChar(120)
+  rulePayload     Json     @map("rule_payload")
+  fee             Decimal  @db.Decimal(19, 4)
+  active          Boolean
+  createdAt       DateTime @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, name])
+  @@index([companyId, branchId, active], map: "delivery_zones_branch_active_idx")
+  @@map("delivery_zones")
+}
+
+model Delivery {
+  id          String    @id @db.Uuid
+  companyId   String    @map("company_id") @db.Uuid
+  branchId    String    @map("branch_id") @db.Uuid
+  orderId     String    @map("order_id") @db.Uuid
+  routeId     String?   @map("route_id") @db.Uuid
+  driverId    String?   @map("driver_id") @db.Uuid
+  addressId   String    @map("address_id") @db.Uuid
+  status      String    @db.VarChar(30)
+  fee         Decimal   @db.Decimal(19, 4)
+  distanceKm  Decimal?  @map("distance_km") @db.Decimal(12, 4)
+  promisedAt  DateTime? @map("promised_at") @db.Timestamptz
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz
+  createdAt   DateTime  @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, orderId])
+  @@unique([id, companyId])
+  @@index([companyId, branchId, status, promisedAt], map: "deliveries_branch_status_promised_idx")
+  @@index([companyId, driverId, status], map: "deliveries_driver_status_idx")
+  @@map("deliveries")
 }

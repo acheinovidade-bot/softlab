@@ -35,3 +35,17 @@ export const checkoutFoodSchema = z.object({
     .array(z.object({ paymentMethodId: z.string().uuid(), amount: z.coerce.number().positive() }))
     .min(1),
 });
+
+export const publicMenuOrderSchema = z.object({
+  guestName: z.string().trim().min(2).max(100),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().uuid(),
+        quantity: z.coerce.number().int().positive().max(50),
+        notes: z.string().trim().max(300).nullable().default(null),
+      }),
+    )
+    .min(1)
+    .max(50),
+});

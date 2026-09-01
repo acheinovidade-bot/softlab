@@ -4,10 +4,10 @@ import { LoginPage } from './LoginPage';
 describe('LoginPage', () => {
   it('renders all credentials required for tenant context', () => {
     render(<LoginPage onAuthenticated={() => Promise.resolve()} />);
-    expect(screen.getByRole('heading', { name: 'Entrar no ERP' })).toBeInTheDocument();
-    expect(screen.getByLabelText('E-mail')).toBeInTheDocument();
-    expect(screen.getByLabelText('Senha')).toBeInTheDocument();
-    expect(screen.getByLabelText('Empresa')).toBeInTheDocument();
-    expect(screen.getByLabelText('Filial')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'ACESSO AO SISTEMA' })).toBeInTheDocument();
+    expect(screen.getByLabelText('USUÁRIO OU E-MAIL')).toBeInTheDocument();
+    expect(screen.getByLabelText('SENHA')).toBeInTheDocument();
+    expect(screen.getByLabelText('EMPRESA')).toBeInTheDocument();
+    expect(screen.getByLabelText('FILIAL')).toBeInTheDocument();
   });
 });

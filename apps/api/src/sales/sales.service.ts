@@ -208,7 +208,7 @@ export class SalesService {
     const total = grossSubtotal.sub(discount).add(data.surcharge).add(data.freight);
     const id = uuidV7();
     const number = `ORC-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${id.slice(0, 6).toUpperCase()}`;
-    await this.prisma.$transaction(async (tx) => {
+    await this.serializable(async (tx) => {
       await tx.salesQuote.create({
         data: {
           id,
@@ -291,7 +291,7 @@ export class SalesService {
     if (quote.validUntil && quote.validUntil < this.today())
       throw new ConflictException('Orçamento vencido');
     const now = new Date();
-    await this.prisma.$transaction(async (tx) => {
+    await this.serializable(async (tx) => {
       const changed = await tx.salesQuote.updateMany({
         where: { id, companyId: auth.companyId, branchId: auth.branchId, status: quote.status },
         data: { status: data.toStatus, updatedAt: now },
@@ -323,7 +323,7 @@ export class SalesService {
     const now = new Date();
     const orderId = uuidV7();
     const number = `PED-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${orderId.slice(0, 6).toUpperCase()}`;
-    await this.prisma.$transaction(async (tx) => {
+    await this.serializable(async (tx) => {
       const changed = await tx.salesQuote.updateMany({
         where: { id, companyId: auth.companyId, branchId: auth.branchId, status: 'approved' },
         data: { status: 'converted', updatedAt: now },
@@ -340,7 +340,7 @@ export class SalesService {
           paymentMethodId: quote.paymentMethodId,
           number,
           origin: 'sales_quote',
-          status: 'pending',
+          status: 'separation',
           subtotal: quote.subtotal,
           discount: quote.discount,
           surcharge: quote.surcharge,
@@ -351,23 +351,84 @@ export class SalesService {
           updatedAt: now,
         },
       });
-      await tx.orderItem.createMany({
-        data: items.map((item) => ({
-          id: uuidV7(),
-          companyId: auth.companyId,
-          orderId,
-          productId: item.productId,
-          locationId: null,
-          lotId: null,
-          description: item.description,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          discount: item.discount,
-          total: item.total,
-          createdAt: now,
-          updatedAt: now,
-        })),
+      const products = await tx.product.findMany({
+        where: { companyId: auth.companyId, id: { in: items.map(({ productId }) => productId) } },
+        select: { id: true, description: true, controlsLot: true },
       });
+      for (const item of items) {
+        const product = products.find(({ id: productId }) => productId === item.productId);
+        if (!product) throw new ConflictException('Produto do pedido não encontrado');
+        const balances = await tx.stockBalance.findMany({
+          where: {
+            companyId: auth.companyId,
+            branchId: auth.branchId,
+            productId: item.productId,
+            quantity: { gt: 0 },
+            ...(product.controlsLot ? { lotId: { not: null } } : {}),
+          },
+        });
+        const lots = product.controlsLot
+          ? await tx.stockLot.findMany({
+              where: {
+                companyId: auth.companyId,
+                id: { in: balances.flatMap(({ lotId }) => (lotId ? [lotId] : [])) },
+              },
+            })
+          : [];
+        balances.sort((left, right) => {
+          const leftExpiry =
+            lots.find(({ id: lotId }) => lotId === left.lotId)?.expiresAt?.getTime() ??
+            Number.MAX_SAFE_INTEGER;
+          const rightExpiry =
+            lots.find(({ id: lotId }) => lotId === right.lotId)?.expiresAt?.getTime() ??
+            Number.MAX_SAFE_INTEGER;
+          return leftExpiry - rightExpiry;
+        });
+        let remaining = item.quantity;
+        let remainingTotal = item.total;
+        let remainingDiscount = item.discount;
+        for (const balance of balances) {
+          const available = balance.quantity.sub(balance.reservedQuantity);
+          if (available.lte(0) || remaining.lte(0)) continue;
+          const quantity = Prisma.Decimal.min(available, remaining);
+          const isLast = quantity.equals(remaining);
+          const ratio = quantity.div(item.quantity);
+          const total = isLast ? remainingTotal : item.total.mul(ratio).toDecimalPlaces(4);
+          const discount = isLast ? remainingDiscount : item.discount.mul(ratio).toDecimalPlaces(4);
+          await tx.stockBalance.update({
+            where: { id: balance.id },
+            data: {
+              reservedQuantity: { increment: quantity },
+              version: { increment: 1 },
+              updatedAt: now,
+            },
+          });
+          await tx.orderItem.create({
+            data: {
+              id: uuidV7(),
+              companyId: auth.companyId,
+              orderId,
+              productId: item.productId,
+              locationId: balance.locationId,
+              lotId: balance.lotId,
+              description: item.description,
+              quantity,
+              unitPrice: item.unitPrice,
+              discount,
+              total,
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
+          remaining = remaining.sub(quantity);
+          remainingTotal = remainingTotal.sub(total);
+          remainingDiscount = remainingDiscount.sub(discount);
+        }
+        if (remaining.gt(0))
+          throw new ConflictException(
+            `Estoque disponível insuficiente para ${product.description}`,
+          );
+      }
       if (quote.paymentMethodId)
         await tx.payment.create({
           data: {
@@ -387,6 +448,7 @@ export class SalesService {
         salesQuoteId: quote.id,
         number,
         total: quote.total,
+        stockReserved: true,
       });
     });
     return this.getOrder(auth, orderId);
@@ -416,8 +478,123 @@ export class SalesService {
     };
   }
 
+  async createOrder(auth: AccessTokenPayload, input: unknown) {
+    const quote = await this.createQuote(auth, input);
+    if (!quote) throw new ConflictException('Não foi possível preparar o pedido');
+    await this.transitionQuote(auth, quote.id, { toStatus: 'sent' });
+    await this.transitionQuote(auth, quote.id, { toStatus: 'approved' });
+    return this.convertQuote(auth, quote.id);
+  }
+
   async getOrder(auth: AccessTokenPayload, id: string) {
     return this.orderSummary(auth.companyId, await this.order(auth, id));
+  }
+
+  async customerInsights(auth: AccessTokenPayload, customerId: string) {
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, companyId: auth.companyId, active: true, deletedAt: null },
+    });
+    if (!customer) throw new NotFoundException('Cliente não encontrado');
+    const orders = await this.prisma.order.findMany({
+      where: { companyId: auth.companyId, branchId: auth.branchId, customerId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    const items = await this.prisma.orderItem.findMany({
+      where: { companyId: auth.companyId, orderId: { in: orders.map(({ id }) => id) } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const [products, sales] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { companyId: auth.companyId, id: { in: items.map(({ productId }) => productId) } },
+        select: { id: true, code: true, description: true },
+      }),
+      this.prisma.sale.findMany({
+        where: {
+          companyId: auth.companyId,
+          branchId: auth.branchId,
+          orderId: { in: orders.map(({ id }) => id) },
+        },
+        select: { id: true, orderId: true, number: true, status: true, soldAt: true, total: true },
+        orderBy: { soldAt: 'desc' },
+      }),
+    ]);
+    const grouped = new Map<
+      string,
+      { quantity: Prisma.Decimal; total: Prisma.Decimal; dates: Date[] }
+    >();
+    for (const item of items) {
+      const current = grouped.get(item.productId) ?? {
+        quantity: new Prisma.Decimal(0),
+        total: new Prisma.Decimal(0),
+        dates: [],
+      };
+      current.quantity = current.quantity.add(item.quantity);
+      current.total = current.total.add(item.total);
+      current.dates.push(item.createdAt);
+      grouped.set(item.productId, current);
+    }
+    const now = Date.now();
+    const recommendations = [...grouped.entries()]
+      .map(([productId, value]) => {
+        const orderedDates = value.dates.sort((a, b) => a.getTime() - b.getTime());
+        const intervals = orderedDates
+          .slice(1)
+          .map((date, index) => (date.getTime() - orderedDates[index]!.getTime()) / 86_400_000);
+        const averageIntervalDays = intervals.length
+          ? Math.max(
+              1,
+              Math.round(intervals.reduce((sum, days) => sum + days, 0) / intervals.length),
+            )
+          : 30;
+        const lastPurchasedAt = orderedDates.at(-1)!;
+        const daysSincePurchase = Math.floor((now - lastPurchasedAt.getTime()) / 86_400_000);
+        const product = products.find(({ id }) => id === productId);
+        return {
+          productId,
+          code: product?.code ?? '',
+          description: product?.description ?? 'Produto',
+          suggestedQuantity: Math.max(
+            1,
+            Math.ceil(value.quantity.toNumber() / orderedDates.length),
+          ),
+          lastPurchasedAt,
+          averageIntervalDays,
+          daysSincePurchase,
+          due: daysSincePurchase >= averageIntervalDays * 0.8,
+        };
+      })
+      .sort((a, b) => Number(b.due) - Number(a.due) || b.daysSincePurchase - a.daysSincePurchase)
+      .slice(0, 20);
+    return {
+      customer: {
+        id: customer.id,
+        name: customer.tradeName ?? customer.legalName,
+        phone: customer.phone,
+        whatsapp: customer.whatsapp,
+        creditLimit: customer.creditLimit,
+      },
+      summary: {
+        orderCount: orders.length,
+        totalPurchased: orders.reduce((sum, order) => sum.add(order.total), new Prisma.Decimal(0)),
+        lastOrderAt: orders[0]?.createdAt ?? null,
+      },
+      history: orders.slice(0, 30).map((order) => ({
+        id: order.id,
+        number: order.number,
+        status: order.status,
+        total: order.total,
+        createdAt: order.createdAt,
+        sale: sales.find(({ orderId }) => orderId === order.id) ?? null,
+        items: items
+          .filter(({ orderId }) => orderId === order.id)
+          .map((item) => ({
+            ...item,
+            product: products.find(({ id }) => id === item.productId) ?? null,
+          })),
+      })),
+      recommendations,
+    };
   }
 
   async allocate(auth: AccessTokenPayload, id: string, input: unknown) {
@@ -572,6 +749,11 @@ export class SalesService {
         data: { status: data.toStatus, updatedAt: now },
       });
       if (changed.count !== 1) throw new ConflictException('Pedido alterado por outro usuário');
+      if (data.toStatus === 'completed')
+        await tx.sale.updateMany({
+          where: { companyId: auth.companyId, branchId: auth.branchId, orderId: id },
+          data: { status: 'completed', updatedAt: now },
+        });
       await this.audit(
         tx,
         auth,

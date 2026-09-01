@@ -16,6 +16,7 @@ describe('SalesService', () => {
   it('converts an approved quote without recalculating or retyping its items', async () => {
     let copiedQuantity = '';
     let paymentAmount = '';
+    let reservedQuantity = '';
     const quote = {
       id: quoteId,
       companyId: auth.companyId,
@@ -36,10 +37,31 @@ describe('SalesService', () => {
     const tx = {
       salesQuote: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       order: { create: jest.fn().mockResolvedValue({}) },
+      product: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'product', description: 'Produto', controlsLot: false }]),
+      },
+      stockBalance: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'balance',
+            locationId: 'location',
+            lotId: null,
+            quantity: new Prisma.Decimal(10),
+            reservedQuantity: new Prisma.Decimal(0),
+          },
+        ]),
+        update: jest.fn((input: { data: { reservedQuantity: { increment: Prisma.Decimal } } }) => {
+          reservedQuantity = input.data.reservedQuantity.increment.toString();
+          return Promise.resolve({});
+        }),
+      },
+      stockLot: { findMany: jest.fn().mockResolvedValue([]) },
       orderItem: {
-        createMany: jest.fn((input: { data: Array<{ quantity: Prisma.Decimal }> }) => {
-          copiedQuantity = input.data[0]?.quantity.toString() ?? '';
-          return Promise.resolve({ count: 1 });
+        create: jest.fn((input: { data: { quantity: Prisma.Decimal } }) => {
+          copiedQuantity = input.data.quantity.toString();
+          return Promise.resolve({});
         }),
       },
       payment: {
@@ -76,6 +98,7 @@ describe('SalesService', () => {
     expect(paymentAmount).toBe('50');
     expect(tx.salesQuote.updateMany).toHaveBeenCalledTimes(1);
     expect(tx.order.create).toHaveBeenCalledTimes(1);
+    expect(reservedQuantity).toBe('2');
   });
 
   it('consumes the reservation and records lot trace when invoicing', async () => {

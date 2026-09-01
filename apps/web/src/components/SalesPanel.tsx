@@ -83,6 +83,7 @@ export function SalesPanel({
   });
   const [order, setOrder] = useState<SalesOrderSummary | null>(null);
   const [creating, setCreating] = useState(false);
+  const [view, setView] = useState<'orders' | 'quotes'>('orders');
   const [lines, setLines] = useState<Line[]>([
     { key: 1, productId: '', quantity: '1', unitPrice: '', discount: '0' },
   ]);
@@ -121,13 +122,13 @@ export function SalesPanel({
     setError('');
     const form = new FormData(event.currentTarget);
     try {
-      await apiRequest('/sales/quotes', {
+      const created = await apiRequest<SalesOrderSummary>('/sales/orders', {
         method: 'POST',
         body: JSON.stringify({
           customerId: value(form, 'customerId'),
           sellerId: value(form, 'sellerId'),
           paymentMethodId: value(form, 'paymentMethodId'),
-          validUntil: value(form, 'validUntil'),
+          validUntil: null,
           discount: value(form, 'discount') ?? '0',
           surcharge: value(form, 'surcharge') ?? '0',
           freight: value(form, 'freight') ?? '0',
@@ -141,6 +142,8 @@ export function SalesPanel({
         }),
       });
       setCreating(false);
+      setOrder(created);
+      setView('orders');
       setLines([{ key: 1, productId: '', quantity: '1', unitPrice: '', discount: '0' }]);
       await load();
     } catch (reason) {
@@ -228,17 +231,26 @@ export function SalesPanel({
   return (
     <section>
       <PageHeader
-        title="Vendas e pedidos"
-        description="Orçamentos convertidos sem redigitação, separação rastreável, faturamento e entrega."
+        title="Pedidos de venda"
+        description="Listagem completa, lançamento, separação, faturamento e acompanhamento dos pedidos."
         action={canManage ? () => setCreating(true) : undefined}
+        actionLabel="+ Lançar novo pedido"
       />
       {error && <div className="error">{error}</div>}
+      <nav className="sales-view-tabs" aria-label="Visualização comercial">
+        <button className={view === 'orders' ? 'active' : ''} onClick={() => setView('orders')}>
+          Pedidos <span>{orders.total}</span>
+        </button>
+        <button className={view === 'quotes' ? 'active' : ''} onClick={() => setView('quotes')}>
+          Orçamentos <span>{quotes.total}</span>
+        </button>
+      </nav>
       {creating && (
         <form className="sales-compose" onSubmit={(event) => void create(event)}>
           <header>
             <div>
-              <span className="eyebrow">NOVO ORÇAMENTO</span>
-              <h2>Condição comercial</h2>
+              <span className="eyebrow">NOVO PEDIDO DE VENDA</span>
+              <h2>Dados comerciais do pedido</h2>
             </div>
             <strong>{money(subtotal)}</strong>
           </header>
@@ -275,15 +287,6 @@ export function SalesPanel({
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
-              Válido até
-              <input
-                name="validUntil"
-                type="date"
-                min={new Date().toISOString().slice(0, 10)}
-                defaultValue={futureDate(7)}
-              />
             </label>
           </div>
           <h3>Produtos</h3>
@@ -403,7 +406,7 @@ export function SalesPanel({
               Cancelar
             </button>
             <button className="primary" disabled={busy === 'create'}>
-              Salvar orçamento
+              Lançar pedido e separar estoque
             </button>
           </div>
         </form>
@@ -496,114 +499,118 @@ export function SalesPanel({
           </div>
         </section>
       )}
-      <section className="movement-section">
-        <h2>Orçamentos</h2>
-        <div className="table-card">
-          <table>
-            <thead>
-              <tr>
-                <th>Número</th>
-                <th>Cliente</th>
-                <th>Vendedor</th>
-                <th>Validade</th>
-                <th>Total</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {quotes.items.map((quote) => (
-                <tr key={quote.id}>
-                  <td>
-                    <strong>{quote.number}</strong>
-                    <small className="cell-subtitle">{quote.itemCount} itens</small>
-                  </td>
-                  <td>{quote.customer?.name ?? 'Não identificado'}</td>
-                  <td>{quote.seller.name}</td>
-                  <td>{quote.validUntil ? date(quote.validUntil) : 'Sem prazo'}</td>
-                  <td>{money(quote.total)}</td>
-                  <td>
-                    <span className={`sales-status ${quote.status}`}>
-                      {quoteLabels[quote.status]}
-                    </span>
-                  </td>
-                  <td>
-                    {canManage && (
-                      <div className="row-actions">
-                        {quote.status === 'draft' && (
-                          <button
-                            className="link"
-                            onClick={() => void quoteAction(quote.id, 'sent')}
-                          >
-                            Enviar
-                          </button>
-                        )}
-                        {quote.status === 'sent' && (
-                          <button
-                            className="link"
-                            onClick={() => void quoteAction(quote.id, 'approved')}
-                          >
-                            Aprovar
-                          </button>
-                        )}
-                        {quote.status === 'approved' && (
-                          <button
-                            className="link"
-                            onClick={() => void quoteAction(quote.id, 'convert')}
-                          >
-                            Virar pedido
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </td>
+      {view === 'quotes' && (
+        <section className="movement-section">
+          <h2>Orçamentos</h2>
+          <div className="table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>Número</th>
+                  <th>Cliente</th>
+                  <th>Vendedor</th>
+                  <th>Validade</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {quotes.items.length === 0 && <div className="empty-row">Nenhum orçamento.</div>}
-        </div>
-      </section>
-      <section className="movement-section">
-        <h2>Pedidos</h2>
-        <div className="table-card">
-          <table>
-            <thead>
-              <tr>
-                <th>Número</th>
-                <th>Cliente</th>
-                <th>Vendedor</th>
-                <th>Total</th>
-                <th>Etapa</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {orders.items.map((item) => (
-                <tr key={item.id}>
-                  <td>
-                    <strong>{item.number}</strong>
-                  </td>
-                  <td>{item.customer?.name ?? 'Não identificado'}</td>
-                  <td>{item.seller.name}</td>
-                  <td>{money(item.total)}</td>
-                  <td>
-                    <span className={`sales-status ${item.status}`}>
-                      {orderLabels[item.status]}
-                    </span>
-                  </td>
-                  <td>
-                    <button className="link" onClick={() => void open(item.id)}>
-                      Acompanhar
-                    </button>
-                  </td>
+              </thead>
+              <tbody>
+                {quotes.items.map((quote) => (
+                  <tr key={quote.id}>
+                    <td>
+                      <strong>{quote.number}</strong>
+                      <small className="cell-subtitle">{quote.itemCount} itens</small>
+                    </td>
+                    <td>{quote.customer?.name ?? 'Não identificado'}</td>
+                    <td>{quote.seller.name}</td>
+                    <td>{quote.validUntil ? date(quote.validUntil) : 'Sem prazo'}</td>
+                    <td>{money(quote.total)}</td>
+                    <td>
+                      <span className={`sales-status ${quote.status}`}>
+                        {quoteLabels[quote.status]}
+                      </span>
+                    </td>
+                    <td>
+                      {canManage && (
+                        <div className="row-actions">
+                          {quote.status === 'draft' && (
+                            <button
+                              className="link"
+                              onClick={() => void quoteAction(quote.id, 'sent')}
+                            >
+                              Enviar
+                            </button>
+                          )}
+                          {quote.status === 'sent' && (
+                            <button
+                              className="link"
+                              onClick={() => void quoteAction(quote.id, 'approved')}
+                            >
+                              Aprovar
+                            </button>
+                          )}
+                          {quote.status === 'approved' && (
+                            <button
+                              className="link"
+                              onClick={() => void quoteAction(quote.id, 'convert')}
+                            >
+                              Virar pedido
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {quotes.items.length === 0 && <div className="empty-row">Nenhum orçamento.</div>}
+          </div>
+        </section>
+      )}
+      {view === 'orders' && (
+        <section className="movement-section">
+          <h2>Pedidos</h2>
+          <div className="table-card">
+            <table>
+              <thead>
+                <tr>
+                  <th>Número</th>
+                  <th>Cliente</th>
+                  <th>Vendedor</th>
+                  <th>Total</th>
+                  <th>Etapa</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {orders.items.length === 0 && <div className="empty-row">Nenhum pedido.</div>}
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {orders.items.map((item) => (
+                  <tr key={item.id}>
+                    <td>
+                      <strong>{item.number}</strong>
+                    </td>
+                    <td>{item.customer?.name ?? 'Não identificado'}</td>
+                    <td>{item.seller.name}</td>
+                    <td>{money(item.total)}</td>
+                    <td>
+                      <span className={`sales-status ${item.status}`}>
+                        {orderLabels[item.status]}
+                      </span>
+                    </td>
+                    <td>
+                      <button className="link" onClick={() => void open(item.id)}>
+                        Acompanhar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {orders.items.length === 0 && <div className="empty-row">Nenhum pedido.</div>}
+          </div>
+        </section>
+      )}
     </section>
   );
 }
@@ -632,11 +639,6 @@ function number(amount: string | number) {
 }
 function date(input: string) {
   return new Date(input).toLocaleDateString('pt-BR');
-}
-function futureDate(days: number) {
-  const result = new Date();
-  result.setDate(result.getDate() + days);
-  return result.toISOString().slice(0, 10);
 }
 function message(reason: unknown) {
   return reason instanceof Error ? reason.message : 'Falha no fluxo de vendas';

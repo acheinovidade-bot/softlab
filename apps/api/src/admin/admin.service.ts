@@ -7,8 +7,8 @@ import { PrismaService } from '../infrastructure/database/prisma.service';
 import type { AccessTokenPayload } from '../auth/auth.types';
 import { SaasService } from '../saas/saas.service';
 import {
-  createBranchSchema, createRoleSchema, inviteUserSchema, rolePermissionsSchema,
-  updateBranchSchema, updateMembershipSchema, updateRoleSchema, updateUserAccessSchema,
+  createBranchSchema, createFiscalPosTerminalSchema, createRoleSchema, inviteUserSchema, rolePermissionsSchema,
+  updateBranchSchema, updateCompanyProfileSchema, updateMembershipSchema, updateRoleSchema, updateUserAccessSchema,
 } from './admin.schemas';
 
 @Injectable()
@@ -16,6 +16,29 @@ export class AdminService {
   constructor(private readonly prisma: PrismaService, private readonly saas: SaasService) {}
 
   getSubscription(auth: AccessTokenPayload) { return this.saas.getSummary(auth.companyId); }
+
+  async getCompanyProfile(auth: AccessTokenPayload) {
+    const company = await this.prisma.company.findFirst({
+      where: { id: auth.companyId, deletedAt: null },
+      select: { id: true, taxId: true, legalName: true, tradeName: true, timezone: true,
+        stateRegistration: true, municipalRegistration: true, taxRegime: true, cnae: true,
+        phone: true, email: true, postalCode: true, street: true, addressNumber: true,
+        complement: true, district: true, city: true, state: true },
+    });
+    if (!company) throw new NotFoundException('Empresa não encontrada');
+    return company;
+  }
+
+  async updateCompanyProfile(auth: AccessTokenPayload, input: unknown) {
+    const data = updateCompanyProfileSchema.parse(input);
+    const before = await this.getCompanyProfile(auth);
+    return this.withUniqueConflict(async () => this.prisma.$transaction(async (tx) => {
+      const normalized = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value === '' ? null : value]));
+      const after = await tx.company.update({ where: { id: auth.companyId }, data: { ...normalized, updatedAt: new Date() } });
+      await this.audit(tx, auth, 'company.profile.update', 'company', auth.companyId, before, after);
+      return after;
+    }));
+  }
 
   listBranches(auth: AccessTokenPayload) {
     return this.prisma.branch.findMany({ where: { companyId: auth.companyId, deletedAt: null }, orderBy: { code: 'asc' } });
@@ -46,6 +69,50 @@ export class AdminService {
       await this.audit(tx, auth, 'branch.update', 'branch', id, before, branch);
       return branch;
     }));
+  }
+
+  async listFiscalPosTerminals(auth: AccessTokenPayload) {
+    const terminals = await this.prisma.fiscalPosTerminal.findMany({
+      where: { companyId: auth.companyId },
+      orderBy: [{ branchId: 'asc' }, { posNumber: 'asc' }],
+      select: {
+        id: true, branchId: true, posNumber: true, description: true, cashRegisterCode: true,
+        cscToken: true, onlineSeries: true, offlineSeries: true, nfeSeries: true,
+        lastOrderNumber: true, lastNfceNumber: true, lastNfceOfflineNumber: true, lastNfeNumber: true,
+        active: true,
+      },
+    });
+    return terminals.map((terminal) => ({ ...terminal,
+      lastOrderNumber: terminal.lastOrderNumber.toString(), lastNfceNumber: terminal.lastNfceNumber.toString(),
+      lastNfceOfflineNumber: terminal.lastNfceOfflineNumber.toString(), lastNfeNumber: terminal.lastNfeNumber.toString(),
+    }));
+  }
+
+  async createFiscalPosTerminal(auth: AccessTokenPayload, input: unknown) {
+    const data = createFiscalPosTerminalSchema.parse(input);
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: data.branchId, companyId: auth.companyId, deletedAt: null },
+    });
+    if (!branch) throw new NotFoundException('Filial não encontrada');
+    return this.withUniqueConflict(async () => {
+      const now = new Date();
+      const terminal = await this.prisma.fiscalPosTerminal.create({
+        data: {
+          id: uuidV7(), companyId: auth.companyId, ...data, active: true,
+          createdAt: now, updatedAt: now,
+        },
+        select: {
+          id: true, branchId: true, posNumber: true, description: true, cashRegisterCode: true,
+          cscToken: true, onlineSeries: true, offlineSeries: true, nfeSeries: true,
+          lastOrderNumber: true, lastNfceNumber: true, lastNfceOfflineNumber: true, lastNfeNumber: true,
+          active: true,
+        },
+      });
+      return { ...terminal, lastOrderNumber: terminal.lastOrderNumber.toString(),
+        lastNfceNumber: terminal.lastNfceNumber.toString(),
+        lastNfceOfflineNumber: terminal.lastNfceOfflineNumber.toString(),
+        lastNfeNumber: terminal.lastNfeNumber.toString() };
+    });
   }
 
   listPermissions() {

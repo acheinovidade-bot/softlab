@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AccessTokenPayload } from '../auth/auth.types';
 import { uuidV7 } from '../common/uuid-v7';
@@ -9,6 +14,7 @@ import {
   checkoutFoodSchema,
   createTableSchema,
   openTabSchema,
+  publicMenuOrderSchema,
 } from './food.schemas';
 @Injectable()
 export class FoodService {
@@ -44,7 +50,7 @@ export class FoodService {
       }),
       this.prisma.product.findMany({
         where: { companyId: auth.companyId, active: true, deletedAt: null },
-        select: { id: true, code: true, description: true },
+        select: { id: true, code: true, description: true, printSector: true },
         take: 1000,
         orderBy: { description: 'asc' },
       }),
@@ -78,7 +84,10 @@ export class FoodService {
         const price =
           prices.find((p) => p.productId === product.id && p.branchId === auth.branchId) ??
           prices.find((p) => p.productId === product.id && p.branchId === null);
-        return price ? [{ ...product, price: price.salePrice }] : [];
+        const posProduct = posLookups.products.find(({ id }) => id === product.id);
+        return price
+          ? [{ ...product, unitCode: posProduct?.unitCode ?? 'UN', price: price.salePrice }]
+          : [];
       }),
       paymentMethods: posLookups.paymentMethods,
       locations: posLookups.locations,
@@ -101,6 +110,7 @@ export class FoodService {
         companyId: auth.companyId,
         branchId: auth.branchId,
         ...data,
+        publicToken: uuidV7(),
         status: 'free',
         active: true,
         createdAt: now,
@@ -264,6 +274,172 @@ export class FoodService {
     );
     await this.close(auth, id);
     return result;
+  }
+  async publicMenu(token: string) {
+    const table = await this.prisma.foodTable.findFirst({
+      where: { publicToken: token, active: true },
+      select: { id: true, companyId: true, branchId: true, code: true, name: true },
+    });
+    if (!table) throw new NotFoundException('Cardápio não encontrado');
+    const now = new Date();
+    const [company, branch, products, prices] = await Promise.all([
+      this.prisma.company.findUnique({
+        where: { id: table.companyId },
+        select: { tradeName: true, legalName: true },
+      }),
+      this.prisma.branch.findUnique({
+        where: { id: table.branchId },
+        select: { tradeName: true, legalName: true },
+      }),
+      this.prisma.product.findMany({
+        where: { companyId: table.companyId, active: true, deletedAt: null, deliveryEnabled: true },
+        select: {
+          id: true,
+          code: true,
+          description: true,
+          deliveryName: true,
+          deliveryDescription: true,
+          deliveryPrice: true,
+          imageStorageKey: true,
+          categoryId: true,
+        },
+        orderBy: { description: 'asc' },
+      }),
+      this.prisma.productPrice.findMany({
+        where: {
+          companyId: table.companyId,
+          validFrom: { lte: now },
+          OR: [{ validUntil: null }, { validUntil: { gt: now } }],
+          AND: [{ OR: [{ branchId: table.branchId }, { branchId: null }] }],
+        },
+        orderBy: { validFrom: 'desc' },
+      }),
+    ]);
+    return {
+      restaurant:
+        branch?.tradeName ??
+        company?.tradeName ??
+        branch?.legalName ??
+        company?.legalName ??
+        'Cardápio',
+      table: { code: table.code, name: table.name },
+      products: products.flatMap((product) => {
+        const price =
+          product.deliveryPrice ??
+          prices.find((item) => item.productId === product.id && item.branchId === table.branchId)
+            ?.salePrice ??
+          prices.find((item) => item.productId === product.id && item.branchId === null)?.salePrice;
+        return price
+          ? [
+              {
+                id: product.id,
+                code: product.code,
+                name: product.deliveryName ?? product.description,
+                description: product.deliveryDescription,
+                price,
+                imageUrl: product.imageStorageKey,
+              },
+            ]
+          : [];
+      }),
+    };
+  }
+  async publicOrder(token: string, input: unknown) {
+    const data = publicMenuOrderSchema.parse(input);
+    const table = await this.prisma.foodTable.findFirst({
+      where: { publicToken: token, active: true },
+    });
+    if (!table) throw new NotFoundException('Cardápio não encontrado');
+    const products = await this.prisma.product.findMany({
+      where: {
+        companyId: table.companyId,
+        active: true,
+        deletedAt: null,
+        deliveryEnabled: true,
+        id: { in: data.items.map((item) => item.productId) },
+      },
+    });
+    if (products.length !== new Set(data.items.map((item) => item.productId)).size)
+      throw new BadRequestException('Um ou mais produtos estão indisponíveis');
+    const prices = await this.prisma.productPrice.findMany({
+      where: {
+        companyId: table.companyId,
+        productId: { in: products.map((item) => item.id) },
+        validFrom: { lte: new Date() },
+        OR: [{ validUntil: null }, { validUntil: { gt: new Date() } }],
+      },
+      orderBy: { validFrom: 'desc' },
+    });
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      let tab = await tx.foodTab.findFirst({
+        where: {
+          companyId: table.companyId,
+          branchId: table.branchId,
+          tableId: table.id,
+          channel: 'digital_menu',
+          status: 'open',
+        },
+        orderBy: { openedAt: 'desc' },
+      });
+      if (!tab)
+        tab = await tx.foodTab.create({
+          data: {
+            id: uuidV7(),
+            companyId: table.companyId,
+            branchId: table.branchId,
+            tableId: table.id,
+            customerId: null,
+            waiterId: null,
+            number: `QR-${now.toISOString().slice(0, 10).replace(/-/g, '')}-${uuidV7().slice(0, 6).toUpperCase()}`,
+            channel: 'digital_menu',
+            status: 'open',
+            guests: 1,
+            notes: `Pedido digital · ${data.guestName}`,
+            openedAt: now,
+            closedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+      for (const item of data.items) {
+        const product = products.find(({ id }) => id === item.productId)!;
+        const price =
+          product.deliveryPrice ??
+          prices.find(
+            (value) => value.productId === product.id && value.branchId === table.branchId,
+          )?.salePrice ??
+          prices.find((value) => value.productId === product.id && value.branchId === null)
+            ?.salePrice;
+        if (!price) throw new ConflictException(`Produto ${product.description} sem preço vigente`);
+        const quantity = new Prisma.Decimal(item.quantity);
+        await tx.foodTabItem.create({
+          data: {
+            id: uuidV7(),
+            companyId: table.companyId,
+            tabId: tab.id,
+            productId: product.id,
+            quantity,
+            unitPrice: price,
+            total: price.mul(quantity),
+            notes: item.notes,
+            status: 'ordered',
+            createdBy: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+      }
+      await tx.foodTable.update({
+        where: { id: table.id },
+        data: { status: 'occupied', updatedAt: now },
+      });
+      return {
+        orderNumber: tab.number,
+        table: table.name,
+        itemCount: data.items.reduce((sum, item) => sum + item.quantity, 0),
+      };
+    });
   }
   private async tab(auth: AccessTokenPayload, id: string) {
     const tab = await this.prisma.foodTab.findFirst({

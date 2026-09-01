@@ -20,7 +20,13 @@ export class FiscalController {
 
   @Post('nfce/:saleId/issue')
   @RequirePermissions('fiscal.nfce.issue')
-  issue(@Req() request: AuthenticatedRequest, @Param('saleId', ParseUUIDPipe) saleId: string) {
-    return this.service.issue(request.auth, saleId);
+  issue(@Req() request: AuthenticatedRequest, @Param('saleId', ParseUUIDPipe) saleId: string, @Body() body: unknown) {
+    return this.service.issue(request.auth, saleId, body);
+  }
+
+  @Post('nfe/:saleId/issue')
+  @RequirePermissions('fiscal.nfe.issue')
+  issueNfe(@Req() request: AuthenticatedRequest, @Param('saleId', ParseUUIDPipe) saleId: string, @Body() body: unknown) {
+    return this.service.issueNfe(request.auth, saleId, body);
   }
 }

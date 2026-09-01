@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { AccessTokenPayload } from '../auth/auth.types';
 import { uuidV7 } from '../common/uuid-v7';
 import { PrismaService } from '../infrastructure/database/prisma.service';
-import { fiscalSettingSchema } from './fiscal.schemas';
+import { fiscalIssueSchema, fiscalSettingSchema } from './fiscal.schemas';
 import { NfceGateway } from './nfce.gateway';
 
 @Injectable()
@@ -29,13 +29,29 @@ export class FiscalService {
     });
   }
 
-  async issue(auth: AccessTokenPayload, saleId: string) {
+  async issue(auth: AccessTokenPayload, saleId: string, input: unknown = {}) {
+    const issue = fiscalIssueSchema.parse(input);
+    return this.issueDocument(auth, saleId, 'NFCe', '65', issue);
+  }
+
+  async issueNfe(auth: AccessTokenPayload, saleId: string, input: unknown = {}) {
+    const issue = fiscalIssueSchema.parse(input);
+    return this.issueDocument(auth, saleId, 'NFe', '55', { ...issue, offline: false });
+  }
+
+  private async issueDocument(
+    auth: AccessTokenPayload,
+    saleId: string,
+    documentType: 'NFCe' | 'NFe',
+    model: '65' | '55',
+    issue: { terminalId: string | null; offline: boolean },
+  ) {
     const existing = await this.prisma.fiscalDocument.findFirst({
       where: {
         companyId: auth.companyId,
         branchId: auth.branchId,
         saleId,
-        documentType: 'NFCe',
+        documentType,
         status: 'authorized',
       },
     });
@@ -49,6 +65,15 @@ export class FiscalService {
       },
     });
     if (!sale) throw new NotFoundException('Venda concluída não encontrada');
+    const terminal = issue.terminalId
+      ? await this.prisma.fiscalPosTerminal.findFirst({
+          where: {
+            id: issue.terminalId, companyId: auth.companyId, branchId: auth.branchId, active: true,
+          },
+        })
+      : null;
+    if (documentType === 'NFCe' && issue.terminalId && !terminal)
+      throw new ConflictException('PDV fiscal não encontrado ou não pertence à filial atual');
     const [company, branch, order, saleItems, setting] = await Promise.all([
       this.prisma.company.findFirst({
         where: { id: auth.companyId, status: 'active', deletedAt: null },
@@ -73,6 +98,24 @@ export class FiscalService {
     ]);
     if (!company || !branch || !order)
       throw new ConflictException('Cadastro da venda incompleto para emissão fiscal');
+    const recipient = order.customerId
+      ? await this.prisma.customer.findFirst({
+          where: { id: order.customerId, companyId: auth.companyId, deletedAt: null },
+        })
+      : null;
+    const recipientAddressLink = recipient
+      ? await this.prisma.customerAddress.findFirst({
+          where: { customerId: recipient.id },
+          orderBy: { isDefault: 'desc' },
+        })
+      : null;
+    const recipientAddress = recipientAddressLink
+      ? await this.prisma.address.findFirst({
+          where: { id: recipientAddressLink.addressId, companyId: auth.companyId },
+        })
+      : null;
+    if (documentType === 'NFe' && (!recipient?.taxId || !recipientAddress))
+      throw new ConflictException('NF-e requer cliente com CPF/CNPJ e endereço completo');
     if (!setting?.certificateSecretReference)
       throw new ConflictException(
         'Configuração fiscal ou referência do certificado não cadastrada para a filial',
@@ -112,16 +155,50 @@ export class FiscalService {
       };
     });
     const payload = {
+      documentType,
+      model,
       environment: setting.environment,
       taxRegime: setting.taxRegime,
       certificateSecretReference: setting.certificateSecretReference,
       providerSettings: setting.settings,
+      posTerminal: terminal
+        ? {
+            id: terminal.id,
+            number: terminal.posNumber,
+            description: terminal.description,
+            cashRegisterCode: terminal.cashRegisterCode,
+            series: documentType === 'NFe' ? terminal.nfeSeries : issue.offline ? terminal.offlineSeries : terminal.onlineSeries,
+            cscToken: terminal.cscToken,
+            cscCode: terminal.cscCode,
+            mode: issue.offline ? 'offline' : 'online',
+          }
+        : null,
       issuer: {
         companyTaxId: company.taxId,
         branchTaxId: branch.taxId,
         legalName: branch.legalName,
         tradeName: branch.tradeName,
       },
+      recipient: recipient
+        ? {
+            taxId: recipient.taxId,
+            legalName: recipient.legalName,
+            tradeName: recipient.tradeName,
+            email: recipient.email,
+            address: recipientAddress
+              ? {
+                  postalCode: recipientAddress.postalCode,
+                  street: recipientAddress.street,
+                  number: recipientAddress.number,
+                  complement: recipientAddress.complement,
+                  district: recipientAddress.district,
+                  city: recipientAddress.city,
+                  state: recipientAddress.state,
+                  country: recipientAddress.country,
+                }
+              : null,
+          }
+        : null,
       sale: {
         id: sale.id,
         number: sale.number,
@@ -135,7 +212,10 @@ export class FiscalService {
         amount: payment.amount.toString(),
       })),
     };
-    const authorized = await this.gateway.issue(payload, `nfce:${auth.companyId}:${sale.id}`);
+    const authorized =
+      documentType === 'NFe'
+        ? await this.gateway.issueNfe(payload, `nfe:${auth.companyId}:${sale.id}`)
+        : await this.gateway.issue(payload, `nfce:${auth.companyId}:${sale.id}`);
     const now = new Date();
     const created = await this.prisma.$transaction(async (tx) => {
       const fiscal = await tx.fiscalDocument.create({
@@ -143,10 +223,11 @@ export class FiscalService {
           id: uuidV7(),
           companyId: auth.companyId,
           branchId: auth.branchId,
+          posTerminalId: terminal?.id ?? null,
           saleId: sale.id,
           supplierInvoiceId: null,
-          documentType: 'NFCe',
-          model: '65',
+          documentType,
+          model,
           series: authorized.series,
           number: BigInt(authorized.number),
           accessKey: authorized.accessKey,
@@ -155,7 +236,7 @@ export class FiscalService {
           total: sale.total,
           xmlStorageKey: authorized.xmlStorageKey ?? null,
           protocol: authorized.protocol,
-          qrCodeUrl: authorized.qrCodeUrl,
+          qrCodeUrl: authorized.qrCodeUrl ?? null,
           danfePayload: payload as Prisma.InputJsonValue,
           createdAt: now,
           updatedAt: now,
@@ -182,6 +263,15 @@ export class FiscalService {
           updatedAt: now,
         })),
       });
+      if (terminal) {
+        const sequenceField = documentType === 'NFe'
+          ? 'lastNfeNumber'
+          : issue.offline ? 'lastNfceOfflineNumber' : 'lastNfceNumber';
+        const current = terminal[sequenceField];
+        const authorizedNumber = BigInt(authorized.number);
+        if (authorizedNumber > current)
+          await tx.fiscalPosTerminal.update({ where: { id: terminal.id }, data: { [sequenceField]: authorizedNumber, updatedAt: now } });
+      }
       return fiscal;
     });
     return this.document(created);

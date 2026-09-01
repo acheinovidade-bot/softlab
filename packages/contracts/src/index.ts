@@ -39,6 +39,31 @@ export interface BranchSummary {
   status: string;
 }
 
+export interface FiscalPosTerminalSummary {
+  id: string;
+  branchId: string;
+  posNumber: number;
+  description: string;
+  cashRegisterCode: string;
+  cscToken: string;
+  onlineSeries: string;
+  offlineSeries: string;
+  nfeSeries: string;
+  lastOrderNumber: string;
+  lastNfceNumber: string;
+  lastNfceOfflineNumber: string;
+  lastNfeNumber: string;
+  active: boolean;
+}
+
+export interface CompanyProfile {
+  id: string; taxId: string; legalName: string; tradeName: string | null; timezone: string;
+  stateRegistration: string | null; municipalRegistration: string | null; taxRegime: string | null;
+  cnae: string | null; phone: string | null; email: string | null; postalCode: string | null;
+  street: string | null; addressNumber: string | null; complement: string | null;
+  district: string | null; city: string | null; state: string | null;
+}
+
 export interface RoleSummary {
   id: string;
   code: string;
@@ -199,6 +224,8 @@ export interface CnpjSuggestion {
     phone: string | null;
     email: string | null;
     registrationStatus: string | null;
+    cnae: string | null;
+    stateRegistration: string | null;
     address: AddressSuggestion | null;
   };
   sourceUrl: string | null;
@@ -258,6 +285,7 @@ export interface StockMovementSummary {
   product?: { id: string; code: string; description: string };
   location?: { id: string; code: string; name: string };
   lot: null | { id: string; lotNumber: string; expiresAt: string | null };
+  actor?: { id: string; displayName: string };
 }
 export interface StockLotOverviewItem {
   id: string;
@@ -583,8 +611,17 @@ export interface PosProduct {
   code: string;
   barcode: string | null;
   description: string;
+  unitCode: string;
   openPrice: boolean;
   controlsLot: boolean;
+  controlsExpiry: boolean;
+  selectLotAtPos: boolean;
+  lots: Array<{
+    id: string;
+    lotNumber: string;
+    expiresAt: string | null;
+    availableQuantity: string;
+  }>;
   salePrice: string | null;
   availableQuantity: string;
 }
@@ -597,6 +634,17 @@ export interface PosCheckoutResult {
   itemCount: number;
   paymentCount: number;
   soldAt: string;
+  issuer: {
+    tradeName: string | null;
+    legalName: string;
+    taxId: string;
+  };
+  credit?: {
+    customerId: string;
+    customerName: string;
+    saleCreditAmount: string;
+    totalOpenAmount: string | null;
+  } | null;
   offlinePending?: boolean;
 }
 export interface CashSessionSummary {
@@ -622,6 +670,19 @@ export interface CustomerCreditStatement {
   totalPurchased: string;
   totalPaid: string;
   totalDue: string;
+  lastPayment: {
+    settledAt: string;
+    amount: string;
+    account: string;
+    accountStatus: string;
+  } | null;
+  settlements: Array<{
+    id: string;
+    settledAt: string;
+    amount: string;
+    account: string;
+    accountStatus: string;
+  }>;
   coupons: Array<{
     saleId: string;
     saleNumber: string;
