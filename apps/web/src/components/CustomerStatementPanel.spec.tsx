@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { apiRequest } from '../api';
 import { CustomerStatementPanel } from './CustomerStatementPanel';
@@ -47,6 +47,11 @@ describe('CustomerStatementPanel', () => {
       <CustomerStatementPanel
         customerId="c1"
         paymentMethods={[{ id: 'pix', name: 'PIX', type: 'pix' }]}
+        issuer={{
+          tradeName: 'Mercado Modelo',
+          legalName: 'Comercial Modelo Ltda.',
+          taxId: '01027058000191',
+        }}
         canReceive
         onClose={() => undefined}
       />,
@@ -57,6 +62,18 @@ describe('CustomerStatementPanel', () => {
     expect(screen.getAllByText(/25\/08\/2026/).length).toBeGreaterThan(0);
     expect(screen.getByText('Pagamentos e contas baixadas')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Receber parcial' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '' }), { target: { value: 'pix' } });
+    fireEvent.change(screen.getByLabelText('Pagamento de VEN-001'), {
+      target: { value: '30.00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Receber parcial' }));
+    await waitFor(() =>
+      expect(write).toHaveBeenCalledWith(expect.stringContaining('RECIBO DE PAGAMENTO')),
+    );
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('COMPRA BAIXADA'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('VEN-001'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('VALOR PAGO'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('30,00'));
     fireEvent.click(screen.getByRole('button', { name: 'Imprimir extrato 80 mm' }));
     expect(write).toHaveBeenCalledWith(expect.stringContaining('EXTRATO DE CREDIÁRIO'));
     expect(write).toHaveBeenCalledWith(expect.stringContaining('Café especial'));

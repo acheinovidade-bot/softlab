@@ -35,6 +35,18 @@ const receipt: SaleReceipt = {
   payments: [{ name: 'Dinheiro', amount: 32.9 }],
 };
 
+const creditReceipt: SaleReceipt = {
+  ...receipt,
+  customerName: 'Ana Martins',
+  payments: [{ name: 'Crediário', amount: 32.9 }],
+  credit: {
+    customerId: 'customer-1',
+    customerName: 'Ana Martins',
+    saleCreditAmount: '32.90',
+    totalOpenAmount: '167.30',
+  },
+};
+
 describe('SaleCompletionDialog', () => {
   const write = vi.fn();
   const close = vi.fn();
@@ -50,7 +62,7 @@ describe('SaleCompletionDialog', () => {
 
   it('prints company data and a QR Code on the F9 order receipt', async () => {
     const onNext = vi.fn();
-    render(<SaleCompletionDialog receipt={receipt} onNext={onNext} />);
+    render(<SaleCompletionDialog receipt={creditReceipt} onNext={onNext} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Imprimir pedido/ }));
 
@@ -62,6 +74,11 @@ describe('SaleCompletionDialog', () => {
     expect(html.indexOf('Mercado Modelo')).toBeLessThan(html.indexOf('Comercial Modelo'));
     expect(html).toContain('PEDIDO DE VENDA');
     expect(html).toContain('QR Code do pedido');
+    expect(html).toContain('VENDA NO CREDIÁRIO');
+    expect(html).toContain('Ana Martins');
+    expect(html).toContain('CONSTA EM ABERTO');
+    expect(html).toContain('167,30');
+    expect(html.indexOf('QR Code do pedido')).toBeLessThan(html.indexOf('VENDA NO CREDIÁRIO'));
     expect(onNext).toHaveBeenCalledOnce();
   });
 
@@ -76,7 +93,7 @@ describe('SaleCompletionDialog', () => {
       total: '32.90',
     } as never);
     const onNext = vi.fn();
-    render(<SaleCompletionDialog receipt={receipt} onNext={onNext} />);
+    render(<SaleCompletionDialog receipt={creditReceipt} onNext={onNext} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Emitir NFC-e/ }));
 
@@ -86,6 +103,11 @@ describe('SaleCompletionDialog', () => {
     expect(html).toContain('Comercial Modelo do Brasil Ltda.');
     expect(html).toContain('CNPJ 01.027.058/0001-91');
     expect(html).toContain('DANFE NFC-e');
+    expect(html).toContain('VENDA NO CREDIÁRIO');
+    expect(html).toContain('Ana Martins');
+    expect(html).toContain('CONSTA EM ABERTO');
+    expect(html).toContain('167,30');
+    expect(html.indexOf('QR Code NFC-e')).toBeLessThan(html.indexOf('VENDA NO CREDIÁRIO'));
     expect(onNext).toHaveBeenCalledOnce();
   });
 

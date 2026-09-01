@@ -41,7 +41,7 @@ describe('demo customer persistence', () => {
       `/sales/pos/customers/${customerId}/statement?from=2026-08-01&to=2026-08-31`,
     ) as { coupons: unknown[] };
     const count = before.coupons.length;
-    demoResponse(
+    const checkout = demoResponse(
       '/sales/pos/checkout',
       'POST',
       JSON.stringify({
@@ -49,11 +49,20 @@ describe('demo customer persistence', () => {
         items: [{ productId: 'p1', quantity: 1 }],
         payments: [creditPayment],
       }),
-    );
+    ) as {
+      credit: {
+        customerName: string;
+        saleCreditAmount: string;
+        totalOpenAmount: string;
+      };
+    };
     const after = demoResponse(
       `/sales/pos/customers/${customerId}/statement?from=2026-08-01&to=2026-08-31`,
     ) as { coupons: Array<{ amountDue: string }> };
     expect(after.coupons).toHaveLength(count + 1);
     expect(after.coupons[0]?.amountDue).toBe('32.90');
+    expect(checkout.credit.customerName).toBe('Ana Martins');
+    expect(checkout.credit.saleCreditAmount).toBe('32.90');
+    expect(Number(checkout.credit.totalOpenAmount)).toBeGreaterThanOrEqual(32.9);
   });
 });

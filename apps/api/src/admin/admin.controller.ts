@@ -25,6 +25,16 @@ export class AdminController {
   @ApiOperation({ summary: 'Cria uma filial na empresa atual' })
   createBranch(@Req() request: AuthenticatedRequest, @Body() body: unknown) { return this.admin.createBranch(request.auth, body); }
 
+  @Get('fiscal-pos-terminals')
+  @RequirePermissions('admin.branches.read')
+  listFiscalPosTerminals(@Req() request: AuthenticatedRequest) { return this.admin.listFiscalPosTerminals(request.auth); }
+
+  @Post('fiscal-pos-terminals')
+  @RequirePermissions('admin.branches.manage')
+  createFiscalPosTerminal(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.admin.createFiscalPosTerminal(request.auth, body);
+  }
+
   @Patch('branches/:id')
   @RequirePermissions('admin.branches.manage')
   updateBranch(@Req() request: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) { return this.admin.updateBranch(request.auth, id, body); }

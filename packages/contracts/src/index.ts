@@ -39,6 +39,18 @@ export interface BranchSummary {
   status: string;
 }
 
+export interface FiscalPosTerminalSummary {
+  id: string;
+  branchId: string;
+  posNumber: number;
+  description: string;
+  cashRegisterCode: string;
+  cscToken: string;
+  onlineSeries: string;
+  offlineSeries: string;
+  active: boolean;
+}
+
 export interface RoleSummary {
   id: string;
   code: string;
@@ -612,6 +624,12 @@ export interface PosCheckoutResult {
     legalName: string;
     taxId: string;
   };
+  credit?: {
+    customerId: string;
+    customerName: string;
+    saleCreditAmount: string;
+    totalOpenAmount: string | null;
+  } | null;
   offlinePending?: boolean;
 }
 export interface CashSessionSummary {

@@ -14,4 +14,15 @@ describe('PosSettingsDialog', () => {
       controlLotExpiry: true,
     });
   });
+
+  it('changes the print margin with the controls inside the number field', () => {
+    render(<PosSettingsDialog onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Impressão' }));
+    const margin = screen.getByRole('spinbutton', { name: 'Margem esquerda' });
+    expect(margin).toHaveValue(4);
+    fireEvent.click(screen.getByRole('button', { name: 'Aumentar margem esquerda' }));
+    expect(margin).toHaveValue(5);
+    fireEvent.click(screen.getByRole('button', { name: 'Diminuir margem esquerda' }));
+    expect(margin).toHaveValue(4);
+  });
 });

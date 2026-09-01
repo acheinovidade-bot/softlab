@@ -647,6 +647,14 @@ export function PosPanel({
           lastError: null,
         });
         setPendingOffline(await pendingCheckoutCount(offlineScope));
+        const offlineCreditAmount = payments
+          .filter(
+            (payment) =>
+              lookup.paymentMethods.find(({ id }) => id === payment.paymentMethodId)?.type ===
+              'credit_account',
+          )
+          .reduce((sum, payment) => sum + Number(payment.amount), 0);
+        const offlineCustomer = lookup.customers.find(({ id }) => id === body.customerId);
         setReceipt({
           orderId: `offline:${key}`,
           orderNumber: 'PENDENTE',
@@ -658,6 +666,15 @@ export function PosPanel({
           soldAt: new Date().toISOString(),
           issuer: lookup.issuer,
           offlinePending: true,
+          credit:
+            offlineCreditAmount > 0 && body.customerId && offlineCustomer
+              ? {
+                  customerId: body.customerId,
+                  customerName: offlineCustomer.name,
+                  saleCreditAmount: offlineCreditAmount.toFixed(2),
+                  totalOpenAmount: null,
+                }
+              : null,
           customerName: lookup.customers.find(({ id }) => id === body.customerId)?.name,
           sellerName: lookup.sellers.find(({ id }) => id === body.sellerId)?.name,
           lines: cart.map((item) => ({
@@ -1555,14 +1572,15 @@ export function PosPanel({
         <aside className="pos-checkout">
           <div className="pos-sale-context">
             <span>
-              Vendedor: <strong>Consumidor final</strong>
+              Vendedor:{' '}
+              <strong>{lookup.sellers.find(({ id }) => id === sellerId)?.name ?? '\u00a0'}</strong>
             </span>
-            {customerId && (
-              <span>
-                Cliente:{' '}
-                <strong>{lookup.customers.find(({ id }) => id === customerId)?.name}</strong>
-              </span>
-            )}
+            <span>
+              Cliente:{' '}
+              <strong>
+                {lookup.customers.find(({ id }) => id === customerId)?.name ?? 'Consumidor final'}
+              </strong>
+            </span>
           </div>
           <div className="pos-cart">
             <div className="pos-cart-head">
@@ -1973,6 +1991,7 @@ export function PosPanel({
         <CustomerStatementPanel
           customerId={customerId}
           paymentMethods={lookup.paymentMethods}
+          issuer={lookup.issuer}
           canReceive={canReceiveCredit}
           onClose={() => setStatementOpen(false)}
         />

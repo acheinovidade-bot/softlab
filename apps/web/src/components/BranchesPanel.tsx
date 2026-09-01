@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react';
-import type { BranchSummary } from '@erp/contracts';
+import type { BranchSummary, FiscalPosTerminalSummary } from '@erp/contracts';
 import { apiRequest } from '../api';
 
 export function BranchesPanel({ canManage }: { canManage: boolean }) {
   const [items, setItems] = useState<BranchSummary[]>([]);
+  const [terminals, setTerminals] = useState<FiscalPosTerminalSummary[]>([]);
   const [creating, setCreating] = useState(false);
+  const [terminalBranchId, setTerminalBranchId] = useState('');
   const [error, setError] = useState('');
   async function load(): Promise<void> {
     try {
-      setItems(await apiRequest<BranchSummary[]>('/admin/branches'));
+      const [branches, fiscalTerminals] = await Promise.all([
+        apiRequest<BranchSummary[]>('/admin/branches'),
+        apiRequest<FiscalPosTerminalSummary[]>('/admin/fiscal-pos-terminals'),
+      ]);
+      setItems(branches);
+      setTerminals(fiscalTerminals);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao carregar');
     }
@@ -20,7 +27,7 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try {
-      await apiRequest('/admin/branches', {
+      const branch = await apiRequest<BranchSummary>('/admin/branches', {
         method: 'POST',
         body: JSON.stringify({
           code: data.get('code'),
@@ -29,10 +36,36 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
           taxId: data.get('taxId'),
         }),
       });
+      await createTerminal(branch.id, data);
       setCreating(false);
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar');
+    }
+  }
+  async function createTerminal(branchId: string, data: FormData) {
+    await apiRequest('/admin/fiscal-pos-terminals', {
+      method: 'POST',
+      body: JSON.stringify({
+        branchId,
+        posNumber: data.get('posNumber'),
+        description: data.get('description'),
+        cashRegisterCode: data.get('cashRegisterCode'),
+        cscToken: data.get('cscToken'),
+        cscCode: data.get('cscCode'),
+        onlineSeries: data.get('onlineSeries'),
+        offlineSeries: data.get('offlineSeries'),
+      }),
+    });
+  }
+  async function addTerminal(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      await createTerminal(terminalBranchId, new FormData(event.currentTarget));
+      setTerminalBranchId('');
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao salvar o PDV fiscal');
     }
   }
   return (
@@ -61,6 +94,7 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
             CNPJ
             <input name="taxId" inputMode="numeric" pattern="\d{14}" required />
           </label>
+          <FiscalTerminalFields />
           <div className="form-actions">
             <button type="button" className="quiet" onClick={() => setCreating(false)}>
               Cancelar
@@ -77,6 +111,8 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
               <th>Filial</th>
               <th>CNPJ</th>
               <th>Status</th>
+              <th>PDVs fiscais</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -92,13 +128,68 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
                     {item.status === 'active' ? 'Ativa' : 'Inativa'}
                   </span>
                 </td>
+                <td>{terminals.filter(({ branchId }) => branchId === item.id).length}</td>
+                <td>
+                  {canManage && (
+                    <button type="button" className="link" onClick={() => setTerminalBranchId(item.id)}>
+                      Configurar PDV fiscal
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
         {items.length === 0 && <div className="empty-row">Nenhuma filial encontrada.</div>}
       </div>
+      {terminalBranchId && (
+        <form className="inline-form" onSubmit={(event) => void addTerminal(event)}>
+          <h2>Fiscal · {items.find(({ id }) => id === terminalBranchId)?.tradeName || items.find(({ id }) => id === terminalBranchId)?.legalName}</h2>
+          <FiscalTerminalFields />
+          <div className="form-actions">
+            <button type="button" className="quiet" onClick={() => setTerminalBranchId('')}>Cancelar</button>
+            <button className="primary">Salvar PDV fiscal</button>
+          </div>
+        </form>
+      )}
+      <div className="table-card">
+        <table>
+          <thead><tr><th>Filial</th><th>PDV</th><th>Caixa / computador</th><th>Série online</th><th>Série offline</th><th>Vínculo local</th></tr></thead>
+          <tbody>
+            {terminals.map((terminal) => (
+              <tr key={terminal.id}>
+                <td>{items.find(({ id }) => id === terminal.branchId)?.code}</td>
+                <td><strong>PDV {terminal.posNumber}</strong></td>
+                <td>{terminal.cashRegisterCode} · {terminal.description}</td>
+                <td>{terminal.onlineSeries}</td><td>{terminal.offlineSeries}</td>
+                <td><button type="button" className="link" onClick={() => {
+                  localStorage.setItem('softlab:pos-fiscal-terminal-id', terminal.id);
+                  setError(`Este computador foi vinculado ao PDV ${terminal.posNumber}.`);
+                }}>Vincular este computador</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {terminals.length === 0 && <div className="empty-row">Nenhum PDV fiscal configurado.</div>}
+      </div>
     </section>
+  );
+}
+
+function FiscalTerminalFields() {
+  return (
+    <fieldset className="full">
+      <legend>Fiscal e vínculo do PDV</legend>
+      <div className="form-grid">
+        <label>Número do PDV<input name="posNumber" type="number" min="1" required /></label>
+        <label>Descrição do computador/PDV<input name="description" placeholder="Caixa da recepção" required /></label>
+        <label>Código do caixa<input name="cashRegisterCode" placeholder="CAIXA-01" required /></label>
+        <label>Token CSC<input name="cscToken" autoComplete="off" required /></label>
+        <label>Chave CSC<input name="cscCode" type="password" autoComplete="new-password" required /></label>
+        <label>Série PDV online<input name="onlineSeries" inputMode="numeric" pattern="\d+" required /></label>
+        <label>Série PDV offline<input name="offlineSeries" inputMode="numeric" pattern="\d+" required /></label>
+      </div>
+    </fieldset>
   );
 }
 

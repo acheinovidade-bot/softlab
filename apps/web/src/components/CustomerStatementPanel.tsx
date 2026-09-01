@@ -5,11 +5,13 @@ import { apiRequest } from '../api';
 export function CustomerStatementPanel({
   customerId,
   paymentMethods,
+  issuer,
   canReceive,
   onClose,
 }: {
   customerId: string;
   paymentMethods: Array<{ id: string; name: string; type: string }>;
+  issuer: { tradeName: string | null; legalName: string; taxId: string };
   canReceive: boolean;
   onClose: () => void;
 }) {
@@ -38,22 +40,44 @@ export function CustomerStatementPanel({
     }
   }
   useEffect(() => void load(), [customerId]);
-  async function receive(receivableId: string, event: React.FormEvent<HTMLFormElement>) {
+  async function receive(
+    receivableId: string,
+    coupon: CustomerCreditStatement['coupons'][number],
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const amount = Number(form.get('amount'));
+    const rawPaymentMethodId = form.get('paymentMethodId');
+    const paymentMethodId = typeof rawPaymentMethodId === 'string' ? rawPaymentMethodId : '';
+    const paymentMethod = paymentMethods.find(({ id }) => id === paymentMethodId)?.name ??
+      'Não informada';
+    const printTarget = window.open('', '_blank', 'popup,width=420,height=760');
     setBusy(true);
     setError('');
     try {
-      await apiRequest(`/sales/pos/receivables/${receivableId}/settlements`, {
+      const settlement = await apiRequest<{ settledAt?: string; principalAmount?: string; amount?: string }>(`/sales/pos/receivables/${receivableId}/settlements`, {
         method: 'POST',
         body: JSON.stringify({
-          amount: form.get('amount'),
-          paymentMethodId: form.get('paymentMethodId'),
+          amount,
+          paymentMethodId,
           idempotencyKey: randomId(),
         }),
       });
+      if (printTarget && statement)
+        printPaymentReceipt(printTarget, {
+          issuer,
+          customerName: statement.customer.name,
+          coupon,
+          paymentMethod,
+          paidAmount: Number(settlement.principalAmount ?? settlement.amount ?? amount),
+          settledAt: settlement.settledAt ?? new Date().toISOString(),
+          purchaseRemaining: Math.max(0, Number(coupon.amountDue) - amount),
+          totalOpenAmount: Math.max(0, Number(statement.totalDue) - amount),
+        });
       await load();
     } catch (reason) {
+      printTarget?.close();
       setError(message(reason));
     } finally {
       setBusy(false);
@@ -186,7 +210,7 @@ export function CustomerStatementPanel({
                   {canReceive && coupon.receivableId && Number(coupon.amountDue) > 0 && (
                     <form
                       className="statement-payment"
-                      onSubmit={(event) => void receive(coupon.receivableId!, event)}
+                      onSubmit={(event) => void receive(coupon.receivableId!, coupon, event)}
                     >
                       <select name="paymentMethodId" required>
                         <option value="">Forma de recebimento</option>
@@ -299,6 +323,39 @@ function print80mm(statement: CustomerCreditStatement, view: 'summary' | 'comple
     `<!doctype html><html><head><meta charset="utf-8"><title>Extrato do cliente</title><style>@page{size:80mm auto;margin:2mm}*{box-sizing:border-box}body{width:74mm;margin:0 auto;font:10px/1.3 Arial,sans-serif;color:#000}h1,h2,h3,p{text-align:center;margin:5px 0}h1{font-size:15px}h2{font-size:12px;border-block:1px dashed;padding:5px}.row{display:flex;justify-content:space-between;gap:5px;padding:4px 0;border-bottom:1px dashed #777}.row>span:first-child{max-width:52mm}.row small{display:block}.item{font-size:9px}.due{font-size:11px}.totals{margin:6px 0;padding:5px;border:1px solid}.totals .row:last-child{font-size:13px;border:0}section{margin:7px 0}</style></head><body><h1>${escapeHtml(statement.customer.name)}</h1><h2>EXTRATO DE CREDIÁRIO · ${view === 'complete' ? 'COMPLETO' : 'RESUMIDO'}</h2><p>Período: ${new Date(statement.period.from).toLocaleDateString('pt-BR')} a ${new Date(statement.period.to).toLocaleDateString('pt-BR')}</p>${last}<div class="totals"><div class="row"><span>Compras</span><b>${money(statement.totalPurchased)}</b></div><div class="row"><span>Pagamentos</span><b>${money(statement.totalPaid)}</b></div><div class="row"><span>TOTAL EM ABERTO</span><b>${money(statement.totalDue)}</b></div></div>${coupons}${settlements}<p>Impresso em ${new Date().toLocaleString('pt-BR')}</p><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}</script></body></html>`,
   );
   target.document.close();
+}
+
+function printPaymentReceipt(
+  target: Window,
+  data: {
+    issuer: { tradeName: string | null; legalName: string; taxId: string };
+    customerName: string;
+    coupon: CustomerCreditStatement['coupons'][number];
+    paymentMethod: string;
+    paidAmount: number;
+    settledAt: string;
+    purchaseRemaining: number;
+    totalOpenAmount: number;
+  },
+) {
+  const displayName = data.issuer.tradeName?.trim() || data.issuer.legalName;
+  const products = data.coupon.items
+    .map(
+      (item) =>
+        `<div class="row item"><span>${number(item.quantity)}x ${escapeHtml(item.description)}</span><b>${money(item.total)}</b></div>`,
+    )
+    .join('');
+  target.document.write(
+    `<!doctype html><html><head><meta charset="utf-8"><title>Recibo de pagamento</title><style>@page{size:80mm auto;margin:2mm}*{box-sizing:border-box}body{width:74mm;margin:0 auto;font:10px/1.3 Arial,sans-serif;color:#000}h1,h2,h3,p{text-align:center;margin:4px 0}h1{font-size:15px}h2{font-size:12px;border-block:1px dashed;padding:5px}.row{display:flex;justify-content:space-between;gap:5px;padding:4px 0;border-bottom:1px dashed #777}.row>span:first-child{max-width:51mm}.item{font-size:9px}.paid{margin:7px 0;padding:6px;border:2px solid #000;font-size:13px}.remaining{font-size:11px;font-weight:700}.signature{margin-top:18px;padding-top:4px;border-top:1px solid;text-align:center}</style></head><body><h1>${escapeHtml(displayName)}</h1>${data.issuer.legalName !== displayName ? `<p>${escapeHtml(data.issuer.legalName)}</p>` : ''}<p>CNPJ ${escapeHtml(formatTaxId(data.issuer.taxId))}</p><h2>RECIBO DE PAGAMENTO · CREDIÁRIO</h2><p><b>Cliente:</b> ${escapeHtml(data.customerName)}</p><p>${dateTime(data.settledAt)} · ${escapeHtml(data.paymentMethod)}</p><h3>COMPRA BAIXADA</h3><div class="row"><b>${escapeHtml(data.coupon.saleNumber)}</b><span>${dateTime(data.coupon.soldAt)}</span></div>${products}<div class="row"><span>Valor da compra</span><b>${money(data.coupon.total)}</b></div><div class="row"><span>Saldo antes do pagamento</span><b>${money(data.coupon.amountDue)}</b></div><div class="row paid"><span>VALOR PAGO</span><b>${money(data.paidAmount)}</b></div><div class="row"><span>Saldo desta compra</span><b>${money(data.purchaseRemaining)}</b></div><div class="row remaining"><span>TOTAL EM ABERTO DO CLIENTE</span><b>${money(data.totalOpenAmount)}</b></div><p>${data.purchaseRemaining === 0 ? 'COMPRA QUITADA' : 'PAGAMENTO PARCIAL'}</p><p class="signature">Recebemos de ${escapeHtml(data.customerName)} o valor acima indicado.</p><script>window.onload=()=>{window.print();window.onafterprint=()=>window.close()}</script></body></html>`,
+  );
+  target.document.close();
+}
+
+function formatTaxId(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits.length === 14
+    ? digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+    : value;
 }
 
 function escapeHtml(value: string) {

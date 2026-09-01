@@ -398,13 +398,32 @@ export function PosSettingsDialog({ onClose }: { onClose: () => void }) {
                   </label>
                   <label>
                     Margem esquerda
-                    <input
-                      type="number"
-                      min="0"
-                      max="20"
-                      value={settings.leftMargin}
-                      onChange={(e) => update('leftMargin', Number(e.target.value))}
-                    />
+                    <span className="number-stepper">
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={settings.leftMargin}
+                        aria-label="Margem esquerda"
+                        onChange={(e) => update('leftMargin', Number(e.target.value))}
+                      />
+                      <span className="number-stepper-actions">
+                        <button
+                          type="button"
+                          aria-label="Aumentar margem esquerda"
+                          onClick={() => update('leftMargin', Math.min(20, settings.leftMargin + 1))}
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Diminuir margem esquerda"
+                          onClick={() => update('leftMargin', Math.max(0, settings.leftMargin - 1))}
+                        >
+                          −
+                        </button>
+                      </span>
+                    </span>
                   </label>
                 </div>
               </div>

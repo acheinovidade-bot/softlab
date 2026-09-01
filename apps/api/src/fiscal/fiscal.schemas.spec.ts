@@ -1,4 +1,5 @@
 import {
+  fiscalIssueSchema,
   fiscalSettingSchema,
   nfceGatewayResponseSchema,
   nfeGatewayResponseSchema,
@@ -42,5 +43,13 @@ describe('fiscal schemas', () => {
         validFrom: '2026-08-27',
       }),
     ).toThrow();
+  });
+  it('accepts a fiscal terminal link for NFC-e issuance', () => {
+    expect(
+      fiscalIssueSchema.parse({
+        terminalId: '018f4f12-2222-7222-8222-000000000901',
+        offline: true,
+      }),
+    ).toMatchObject({ offline: true });
   });
 });

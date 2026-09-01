@@ -1660,6 +1660,15 @@ select:focus {
   border: 1px solid #d4e1de;
   border-radius: 10px;
 }
+.inline-form fieldset.full {
+  grid-column: 1 / -1;
+  padding: 14px;
+}
+.inline-form fieldset .form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
 .option {
   display: flex;
   align-items: center;
@@ -3234,6 +3243,14 @@ th {
 .pos-settings-grid .test-connection { min-height: 38px; padding: 8px 20px; border: 1px solid #c7ccd4; border-radius: 9px; background: #fff; color: #174a9c; font-weight: 900; }
 .pos-settings-grid .test-connection { max-width: 316px; background: #1557b0; color: #fff; }
 .pos-settings-grid small { font-weight: 500; font-style: italic; }
+.pos-settings-grid .number-stepper { display: grid; grid-template-columns: 62px 24px; min-height: 38px; overflow: hidden; border: 1px solid #c7ccd4; border-radius: 7px; background: #fff; }
+.pos-settings-grid .number-stepper input { width: 62px; min-height: 36px; padding: 6px 8px; border: 0; border-radius: 0; text-align: center; appearance: textfield; }
+.pos-settings-grid .number-stepper input::-webkit-inner-spin-button,
+.pos-settings-grid .number-stepper input::-webkit-outer-spin-button { margin: 0; appearance: none; }
+.pos-settings-grid .number-stepper-actions { display: grid; grid-template-rows: 1fr 1fr; border-left: 1px solid #c7ccd4; }
+.pos-settings-grid .number-stepper-actions button { min-width: 0; min-height: 0; padding: 0; border: 0; background: #eef3f9; color: #174a9c; font: 800 13px/1 Arial,sans-serif; cursor: pointer; }
+.pos-settings-grid .number-stepper-actions button:first-child { border-bottom: 1px solid #c7ccd4; }
+.pos-settings-grid .number-stepper-actions button:hover { background: #dce9f8; }
 .pos-settings-grid em { align-self: end; margin-top: 240px; color: #1453d1; text-align: right; font-size: 12px; font-weight: 800; }
 .pos-settings-notice { margin: 0 auto 8px; color: #166534; font-weight: 800; }
 .pos-settings-dialog > footer { display: flex; justify-content: center; gap: 110px; padding: 10px 0 14px; }

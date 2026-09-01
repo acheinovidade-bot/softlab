@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { AccessTokenPayload } from '../auth/auth.types';
 import { uuidV7 } from '../common/uuid-v7';
 import { PrismaService } from '../infrastructure/database/prisma.service';
-import { fiscalSettingSchema } from './fiscal.schemas';
+import { fiscalIssueSchema, fiscalSettingSchema } from './fiscal.schemas';
 import { NfceGateway } from './nfce.gateway';
 
 @Injectable()
@@ -29,12 +29,13 @@ export class FiscalService {
     });
   }
 
-  async issue(auth: AccessTokenPayload, saleId: string) {
-    return this.issueDocument(auth, saleId, 'NFCe', '65');
+  async issue(auth: AccessTokenPayload, saleId: string, input: unknown = {}) {
+    const issue = fiscalIssueSchema.parse(input);
+    return this.issueDocument(auth, saleId, 'NFCe', '65', issue);
   }
 
   async issueNfe(auth: AccessTokenPayload, saleId: string) {
-    return this.issueDocument(auth, saleId, 'NFe', '55');
+    return this.issueDocument(auth, saleId, 'NFe', '55', { terminalId: null, offline: false });
   }
 
   private async issueDocument(
@@ -42,6 +43,7 @@ export class FiscalService {
     saleId: string,
     documentType: 'NFCe' | 'NFe',
     model: '65' | '55',
+    issue: { terminalId: string | null; offline: boolean },
   ) {
     const existing = await this.prisma.fiscalDocument.findFirst({
       where: {
@@ -62,6 +64,15 @@ export class FiscalService {
       },
     });
     if (!sale) throw new NotFoundException('Venda concluída não encontrada');
+    const terminal = issue.terminalId
+      ? await this.prisma.fiscalPosTerminal.findFirst({
+          where: {
+            id: issue.terminalId, companyId: auth.companyId, branchId: auth.branchId, active: true,
+          },
+        })
+      : null;
+    if (documentType === 'NFCe' && issue.terminalId && !terminal)
+      throw new ConflictException('PDV fiscal não encontrado ou não pertence à filial atual');
     const [company, branch, order, saleItems, setting] = await Promise.all([
       this.prisma.company.findFirst({
         where: { id: auth.companyId, status: 'active', deletedAt: null },
@@ -149,6 +160,18 @@ export class FiscalService {
       taxRegime: setting.taxRegime,
       certificateSecretReference: setting.certificateSecretReference,
       providerSettings: setting.settings,
+      posTerminal: terminal
+        ? {
+            id: terminal.id,
+            number: terminal.posNumber,
+            description: terminal.description,
+            cashRegisterCode: terminal.cashRegisterCode,
+            series: issue.offline ? terminal.offlineSeries : terminal.onlineSeries,
+            cscToken: terminal.cscToken,
+            cscCode: terminal.cscCode,
+            mode: issue.offline ? 'offline' : 'online',
+          }
+        : null,
       issuer: {
         companyTaxId: company.taxId,
         branchTaxId: branch.taxId,
@@ -199,6 +222,7 @@ export class FiscalService {
           id: uuidV7(),
           companyId: auth.companyId,
           branchId: auth.branchId,
+          posTerminalId: terminal?.id ?? null,
           saleId: sale.id,
           supplierInvoiceId: null,
           documentType,

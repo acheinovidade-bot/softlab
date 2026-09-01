@@ -1367,10 +1367,33 @@ model FiscalSetting {
   @@map("fiscal_settings")
 }
 
+model FiscalPosTerminal {
+  id               String   @id @db.Uuid
+  companyId        String   @map("company_id") @db.Uuid
+  branchId         String   @map("branch_id") @db.Uuid
+  posNumber        Int      @map("pos_number")
+  description      String   @db.VarChar(160)
+  cashRegisterCode String   @map("cash_register_code") @db.VarChar(40)
+  cscToken         String   @map("csc_token") @db.VarChar(80)
+  cscCode          String   @map("csc_code") @db.VarChar(200)
+  onlineSeries     String   @map("online_series") @db.VarChar(10)
+  offlineSeries    String   @map("offline_series") @db.VarChar(10)
+  active           Boolean
+  createdAt        DateTime @map("created_at") @db.Timestamptz
+  updatedAt        DateTime @map("updated_at") @db.Timestamptz
+
+  @@unique([companyId, branchId, posNumber])
+  @@unique([companyId, branchId, onlineSeries])
+  @@unique([companyId, branchId, offlineSeries])
+  @@index([companyId, branchId, active], map: "fiscal_pos_terminals_branch_active_idx")
+  @@map("fiscal_pos_terminals")
+}
+
 model FiscalDocument {
   id                String    @id @db.Uuid
   companyId         String    @map("company_id") @db.Uuid
   branchId          String    @map("branch_id") @db.Uuid
+  posTerminalId     String?   @map("pos_terminal_id") @db.Uuid
   saleId            String?   @map("sale_id") @db.Uuid
   supplierInvoiceId String?   @map("supplier_invoice_id") @db.Uuid
   documentType      String    @map("document_type") @db.VarChar(10)
@@ -1392,6 +1415,7 @@ model FiscalDocument {
   @@unique([companyId, branchId, documentType, series, number])
   @@unique([id, companyId])
   @@index([companyId, branchId, saleId, status], map: "fiscal_documents_sale_status_idx")
+  @@index([companyId, branchId, posTerminalId, series], map: "fiscal_documents_terminal_series_idx")
   @@map("fiscal_documents")
 }
 

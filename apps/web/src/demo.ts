@@ -1,10 +1,21 @@
-import type { CurrentUser, CustomerCreditStatement } from '@erp/contracts';
+import type { BranchSummary, CurrentUser, CustomerCreditStatement, FiscalPosTerminalSummary } from '@erp/contracts';
 
 const demoBaseCustomers = [
   { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
   { id: '018f4f12-2222-7222-8222-000000000102', name: 'Mercado Boa Mesa' },
 ];
 const demoPosCustomers = [...demoBaseCustomers, ...readSavedDemoCustomers()];
+const demoBranches: BranchSummary[] = [{
+  id: '018f4f12-2222-7222-8222-000000000003', code: 'MATRIZ',
+  legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.', tradeName: 'ERP Híbrido Mercado',
+  taxId: '01027058000191', status: 'active',
+}];
+const demoFiscalPosTerminals: FiscalPosTerminalSummary[] = [{
+  id: '018f4f12-2222-7222-8222-000000000901',
+  branchId: '018f4f12-2222-7222-8222-000000000003', posNumber: 1,
+  description: 'Computador do caixa principal', cashRegisterCode: 'CAIXA-01',
+  cscToken: '000001', onlineSeries: '101', offlineSeries: '901', active: true,
+}];
 
 const demoStatements: Record<string, CustomerCreditStatement> = {
   '018f4f12-2222-7222-8222-000000000101': {
@@ -163,12 +174,36 @@ export const demoUser: CurrentUser = {
     'master.employees.manage',
     'admin.subscription.read',
     'admin.branches.read',
+    'admin.branches.manage',
     'admin.users.read',
     'admin.roles.read',
   ],
 };
 
 export function demoResponse(path: string, method = 'GET', requestBody?: BodyInit | null): unknown {
+  if (path === '/admin/branches') {
+    if (method === 'GET') return demoBranches;
+    const body = demoBody(requestBody);
+    const branch: BranchSummary = {
+      id: crypto.randomUUID(), code: demoText(body.code).toUpperCase(),
+      legalName: demoText(body.legalName), tradeName: demoText(body.tradeName) || null,
+      taxId: demoText(body.taxId), status: 'active',
+    };
+    demoBranches.push(branch);
+    return branch;
+  }
+  if (path === '/admin/fiscal-pos-terminals') {
+    if (method === 'GET') return demoFiscalPosTerminals;
+    const body = demoBody(requestBody);
+    const terminal: FiscalPosTerminalSummary = {
+      id: crypto.randomUUID(), branchId: demoText(body.branchId), posNumber: Number(body.posNumber),
+      description: demoText(body.description), cashRegisterCode: demoText(body.cashRegisterCode).toUpperCase(),
+      cscToken: demoText(body.cscToken), onlineSeries: demoText(body.onlineSeries),
+      offlineSeries: demoText(body.offlineSeries), active: true,
+    };
+    demoFiscalPosTerminals.push(terminal);
+    return terminal;
+  }
   if (path === '/master/customers' && method !== 'GET') {
     const body = demoBody(requestBody);
     const id = crypto.randomUUID();
@@ -277,7 +312,7 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
       },
       settings: {
         defaultCustomerId: null,
-        defaultSellerId: '018f4f12-2222-7222-8222-000000000201',
+        defaultSellerId: null,
         defaultLocationId: '018f4f12-2222-7222-8222-000000000401',
         sellerMode: 'default',
       },
@@ -999,6 +1034,12 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
     const soldAt = new Date().toISOString();
     const saleId = crypto.randomUUID();
     const saleNumber = `VEN-DEMO-${String(Date.now()).slice(-6)}`;
+    let credit: {
+      customerId: string;
+      customerName: string;
+      saleCreditAmount: string;
+      totalOpenAmount: string;
+    } | null = null;
     if (creditAmount > 0 && customerId) {
       const customer = demoPosCustomers.find(({ id }) => id === customerId);
       const statement =
@@ -1036,6 +1077,12 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
       statement.totalPurchased = (Number(statement.totalPurchased) + total).toFixed(2);
       statement.totalDue = (Number(statement.totalDue) + creditAmount).toFixed(2);
       demoStatements[customerId] = statement;
+      credit = {
+        customerId,
+        customerName: customer?.name ?? 'Cliente',
+        saleCreditAmount: creditAmount.toFixed(2),
+        totalOpenAmount: statement.totalDue,
+      };
     }
     return {
       orderId: crypto.randomUUID(),
@@ -1051,6 +1098,7 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
         legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.',
         taxId: '01027058000191',
       },
+      credit,
     };
   }
   if (path.includes('/checkout'))
@@ -1090,6 +1138,10 @@ function demoBody(body?: BodyInit | null) {
   } catch {
     return {} as Record<string, unknown>;
   }
+}
+
+function demoText(value: unknown) {
+  return typeof value === 'string' || typeof value === 'number' ? `${value}` : '';
 }
 
 function readSavedDemoCustomers() {

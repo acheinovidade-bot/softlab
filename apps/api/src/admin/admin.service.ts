@@ -7,7 +7,7 @@ import { PrismaService } from '../infrastructure/database/prisma.service';
 import type { AccessTokenPayload } from '../auth/auth.types';
 import { SaasService } from '../saas/saas.service';
 import {
-  createBranchSchema, createRoleSchema, inviteUserSchema, rolePermissionsSchema,
+  createBranchSchema, createFiscalPosTerminalSchema, createRoleSchema, inviteUserSchema, rolePermissionsSchema,
   updateBranchSchema, updateMembershipSchema, updateRoleSchema, updateUserAccessSchema,
 } from './admin.schemas';
 
@@ -46,6 +46,38 @@ export class AdminService {
       await this.audit(tx, auth, 'branch.update', 'branch', id, before, branch);
       return branch;
     }));
+  }
+
+  listFiscalPosTerminals(auth: AccessTokenPayload) {
+    return this.prisma.fiscalPosTerminal.findMany({
+      where: { companyId: auth.companyId },
+      orderBy: [{ branchId: 'asc' }, { posNumber: 'asc' }],
+      select: {
+        id: true, branchId: true, posNumber: true, description: true, cashRegisterCode: true,
+        cscToken: true, onlineSeries: true, offlineSeries: true, active: true,
+      },
+    });
+  }
+
+  async createFiscalPosTerminal(auth: AccessTokenPayload, input: unknown) {
+    const data = createFiscalPosTerminalSchema.parse(input);
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: data.branchId, companyId: auth.companyId, deletedAt: null },
+    });
+    if (!branch) throw new NotFoundException('Filial não encontrada');
+    return this.withUniqueConflict(async () => {
+      const now = new Date();
+      return this.prisma.fiscalPosTerminal.create({
+        data: {
+          id: uuidV7(), companyId: auth.companyId, ...data, active: true,
+          createdAt: now, updatedAt: now,
+        },
+        select: {
+          id: true, branchId: true, posNumber: true, description: true, cashRegisterCode: true,
+          cscToken: true, onlineSeries: true, offlineSeries: true, active: true,
+        },
+      });
+    });
   }
 
   listPermissions() {

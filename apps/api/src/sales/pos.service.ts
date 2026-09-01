@@ -644,6 +644,17 @@ export class PosService {
                 updatedAt: now,
               })),
           });
+        const openCredit =
+          creditAmount.gt(0) && selectedCustomer
+            ? await tx.accountReceivable.aggregate({
+                where: {
+                  companyId: auth.companyId,
+                  customerId: selectedCustomer.id,
+                  status: { in: ['open', 'partial'] },
+                },
+                _sum: { openAmount: true },
+              })
+            : null;
         await tx.auditLog.create({
           data: {
             id: uuidV7(),
@@ -676,6 +687,15 @@ export class PosService {
           paymentCount: data.payments.length,
           soldAt: now,
           issuer,
+          credit:
+            creditAmount.gt(0) && selectedCustomer
+              ? {
+                  customerId: selectedCustomer.id,
+                  customerName: selectedCustomer.tradeName?.trim() || selectedCustomer.legalName,
+                  saleCreditAmount: creditAmount.toFixed(2),
+                  totalOpenAmount: new Prisma.Decimal(openCredit?._sum.openAmount ?? 0).toFixed(2),
+                }
+              : null,
         };
       });
     } catch (error) {
@@ -1030,6 +1050,30 @@ export class PosService {
       this.receiptIssuer(auth),
     ]);
     if (!order || !sale) throw new ConflictException('Checkout idempotente inconsistente');
+    const receivable = order.customerId
+      ? await this.prisma.accountReceivable.findFirst({
+          where: {
+            companyId: auth.companyId,
+            customerId: order.customerId,
+            orderId: order.id,
+          },
+        })
+      : null;
+    const [customer, openCredit] = receivable
+      ? await Promise.all([
+          this.prisma.customer.findFirst({
+            where: { id: receivable.customerId!, companyId: auth.companyId },
+          }),
+          this.prisma.accountReceivable.aggregate({
+            where: {
+              companyId: auth.companyId,
+              customerId: receivable.customerId!,
+              status: { in: ['open', 'partial'] },
+            },
+            _sum: { openAmount: true },
+          }),
+        ])
+      : [null, null];
     return {
       orderId: order.id,
       orderNumber: order.number,
@@ -1040,6 +1084,15 @@ export class PosService {
       paymentCount,
       soldAt: sale.soldAt,
       issuer,
+      credit:
+        receivable && customer
+          ? {
+              customerId: customer.id,
+              customerName: customer.tradeName?.trim() || customer.legalName,
+              saleCreditAmount: receivable.amount.toFixed(2),
+              totalOpenAmount: new Prisma.Decimal(openCredit?._sum.openAmount ?? 0).toFixed(2),
+            }
+          : null,
     };
   }
   private async receiptIssuer(auth: AccessTokenPayload) {

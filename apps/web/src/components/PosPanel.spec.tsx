@@ -37,6 +37,11 @@ describe('PosPanel', () => {
     expect(
       screen.getByRole('heading', { name: 'Liberado para uma nova venda' }),
     ).toBeInTheDocument();
+    const saleContext = document.querySelector('.pos-sale-context');
+    expect(saleContext).toHaveTextContent('Vendedor:');
+    expect(saleContext).toHaveTextContent('Cliente: Consumidor final');
+    expect(saleContext).not.toHaveTextContent('Vendedor: Consumidor final');
+    expect(saleContext).not.toHaveTextContent('Operador');
     fireEvent.keyDown(window, { key: 'F3' });
     expect(screen.getByRole('dialog', { name: 'Localizar produto' })).toBeInTheDocument();
     expect(
@@ -187,7 +192,7 @@ describe('PosPanel', () => {
       within(dialog).getByRole('button', { name: /Ana Martins.*Extrato do cliente/ }),
     );
     expect(await screen.findByRole('dialog', { name: 'Extrato do cliente' })).toBeInTheDocument();
-    expect(screen.getByText(/Último pagamento/)).toBeInTheDocument();
+    expect(await screen.findByText(/Último pagamento/, {}, { timeout: 5_000 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Imprimir extrato 80 mm' })).toBeInTheDocument();
   });
   it('hides lot traceability while the local PDV setting is disabled', async () => {

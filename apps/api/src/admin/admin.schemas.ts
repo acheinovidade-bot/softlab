@@ -10,6 +10,19 @@ export const createBranchSchema = z.object({
   taxId: z.string().regex(/^\d{14}$/),
 });
 export const updateBranchSchema = createBranchSchema.partial().extend({ status: status.optional() });
+export const createFiscalPosTerminalSchema = z.object({
+  branchId: uuid,
+  posNumber: z.coerce.number().int().positive().max(9999),
+  description: z.string().trim().min(2).max(160),
+  cashRegisterCode: z.string().trim().min(1).max(40).transform((value) => value.toUpperCase()),
+  cscToken: z.string().trim().min(1).max(80),
+  cscCode: z.string().trim().min(6).max(200),
+  onlineSeries: z.string().trim().regex(/^\d{1,10}$/),
+  offlineSeries: z.string().trim().regex(/^\d{1,10}$/),
+}).refine((value) => value.onlineSeries !== value.offlineSeries, {
+  message: 'As séries online e offline devem ser diferentes',
+  path: ['offlineSeries'],
+});
 export const createRoleSchema = z.object({
   code: z.string().trim().min(2).max(80).regex(/^[a-z0-9._-]+$/),
   name: z.string().trim().min(2).max(120),
