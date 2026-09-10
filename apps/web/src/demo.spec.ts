@@ -1,6 +1,11 @@
 import { demoResponse } from './demo';
 
 describe('demo customer persistence', () => {
+  it('loads customers with or without search parameters', () => {
+    expect((demoResponse('/master/customers') as { items: unknown[] }).items.length).toBeGreaterThan(0);
+    expect((demoResponse('/master/customers?search=Ana') as { items: unknown[] }).items.length).toBeGreaterThan(0);
+  });
+
   it('keeps the customer name entered in the PDV and exposes it in lookups', () => {
     const customer = demoResponse(
       '/master/customers',

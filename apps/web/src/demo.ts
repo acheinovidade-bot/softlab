@@ -243,7 +243,7 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
     demoFiscalPosTerminals.push(terminal);
     return terminal;
   }
-  if (path.startsWith('/master/customers?') && method === 'GET') {
+  if ((path === '/master/customers' || path.startsWith('/master/customers?')) && method === 'GET') {
     const search = new URLSearchParams(path.split('?')[1] ?? '').get('search')?.toLowerCase() ?? '';
     const items = demoCustomerRecords.filter((customer) => !search || [customer.legalName, customer.tradeName, customer.taxId, customer.phone].some((value) => value?.toLowerCase().includes(search)));
     return { items, total: items.length, page: 1, pageSize: 20 };
