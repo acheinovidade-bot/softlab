@@ -4898,6 +4898,9 @@ th {
 .statement-payment-total > div small { color: var(--muted); font-weight: 500; }
 .company-profile-form { margin-bottom: 28px; }
 .company-profile-form label small { display: block; color: var(--muted); font-size: 11px; font-weight: 500; }
+.cnpj-lookup-field { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 6px; }
+.cnpj-lookup-field button { min-width: 44px; border: 1px solid #8bb9b2; border-radius: 9px; background: #e7f5f2; color: #0c675c; font-size: 17px; font-weight: 900; cursor: pointer; }
+.cnpj-lookup-field button:hover { background: #d4eee9; }
 .page-header.compact { margin-top: 24px; }
 .table-subtitle { display: block; margin-top: 3px; color: var(--muted); }
 .statement-settlements {

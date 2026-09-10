@@ -1,10 +1,15 @@
-import type { BranchSummary, CompanyProfile, CurrentUser, CustomerCreditStatement, FiscalPosTerminalSummary } from '@erp/contracts';
+import type { BranchSummary, CompanyProfile, CurrentUser, CustomerCreditStatement, CustomerDetails, FiscalPosTerminalSummary } from '@erp/contracts';
 
 const demoBaseCustomers = [
   { id: '018f4f12-2222-7222-8222-000000000101', name: 'Ana Martins' },
   { id: '018f4f12-2222-7222-8222-000000000102', name: 'Mercado Boa Mesa' },
 ];
-const demoPosCustomers = [...demoBaseCustomers, ...readSavedDemoCustomers()];
+const demoBaseCustomerRecords: CustomerDetails[] = demoBaseCustomers.map((customer, index) => ({
+  id: customer.id, personType: index === 1 ? 'J' : 'F', taxId: null, legalName: customer.name,
+  tradeName: null, phone: null, whatsapp: null, email: null, creditLimit: index === 0 ? '1500.00' : '3000.00', active: true, addresses: [],
+}));
+const demoCustomerRecords = [...demoBaseCustomerRecords, ...readSavedDemoCustomerRecords()];
+const demoPosCustomers = demoCustomerRecords.map(({ id, legalName, tradeName }) => ({ id, name: tradeName || legalName }));
 const demoBranches: BranchSummary[] = [{
   id: '018f4f12-2222-7222-8222-000000000003', code: 'MATRIZ',
   legalName: 'ERP Híbrido Comércio e Tecnologia Ltda.', tradeName: 'ERP Híbrido Mercado',
@@ -213,6 +218,14 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
       id: crypto.randomUUID(), code: demoText(body.code).toUpperCase(),
       legalName: demoText(body.legalName), tradeName: demoText(body.tradeName) || null,
       taxId: demoText(body.taxId), status: 'active',
+      stateRegistration: demoNullable(body.stateRegistration, null),
+      municipalRegistration: demoNullable(body.municipalRegistration, null),
+      taxRegime: demoNullable(body.taxRegime, null), cnae: demoNullable(body.cnae, null),
+      phone: demoNullable(body.phone, null), email: demoNullable(body.email, null),
+      postalCode: demoNullable(body.postalCode, null), street: demoNullable(body.street, null),
+      addressNumber: demoNullable(body.addressNumber, null), complement: demoNullable(body.complement, null),
+      district: demoNullable(body.district, null), city: demoNullable(body.city, null),
+      state: demoNullable(body.state, null),
     };
     demoBranches.push(branch);
     return branch;
@@ -230,17 +243,68 @@ export function demoResponse(path: string, method = 'GET', requestBody?: BodyIni
     demoFiscalPosTerminals.push(terminal);
     return terminal;
   }
-  if (path === '/master/customers' && method !== 'GET') {
+  if (path.startsWith('/master/customers?') && method === 'GET') {
+    const search = new URLSearchParams(path.split('?')[1] ?? '').get('search')?.toLowerCase() ?? '';
+    const items = demoCustomerRecords.filter((customer) => !search || [customer.legalName, customer.tradeName, customer.taxId, customer.phone].some((value) => value?.toLowerCase().includes(search)));
+    return { items, total: items.length, page: 1, pageSize: 20 };
+  }
+  const customerUpdateMatch = path.match(/^\/master\/customers\/([^/]+)$/);
+  if (customerUpdateMatch && method === 'GET') {
+    const customer = demoCustomerRecords.find(({ id }) => id === customerUpdateMatch[1]);
+    if (!customer) throw new Error('Cliente não encontrado');
+    return customer;
+  }
+  if (customerUpdateMatch && method === 'PATCH') {
+    const index = demoCustomerRecords.findIndex(({ id }) => id === customerUpdateMatch[1]);
+    if (index < 0) throw new Error('Cliente não encontrado');
+    const body = demoBody(requestBody);
+    demoCustomerRecords[index] = { ...demoCustomerRecords[index]!, ...body,
+      tradeName: demoNullable(body.tradeName, demoCustomerRecords[index]!.tradeName),
+      phone: demoNullable(body.phone, demoCustomerRecords[index]!.phone),
+      whatsapp: demoNullable(body.whatsapp, demoCustomerRecords[index]!.whatsapp),
+      email: demoNullable(body.email, demoCustomerRecords[index]!.email),
+      creditLimit: demoText(body.creditLimit) || demoCustomerRecords[index]!.creditLimit,
+    } as CustomerDetails;
+    const pos = demoPosCustomers.find(({ id }) => id === customerUpdateMatch[1]);
+    if (pos) pos.name = demoCustomerRecords[index].tradeName || demoCustomerRecords[index].legalName;
+    persistDemoCustomers();
+    return demoCustomerRecords[index];
+  }
+  if (path === '/master/customers' && method === 'POST') {
     const body = demoBody(requestBody);
     const id = crypto.randomUUID();
     const legalName =
       typeof body.legalName === 'string' && body.legalName.trim()
         ? body.legalName.trim()
         : 'Cliente sem nome';
-    demoPosCustomers.push({ id, name: legalName });
+    const addresses = Array.isArray(body.addresses) ? body.addresses : [];
+    const customer: CustomerDetails = {
+      id, personType: body.personType === 'J' ? 'J' : 'F', taxId: demoNullable(body.taxId, null),
+      legalName, tradeName: demoNullable(body.tradeName, null), phone: demoNullable(body.phone, null),
+      whatsapp: demoNullable(body.whatsapp, null), email: demoNullable(body.email, null),
+      creditLimit: demoText(body.creditLimit) || '0', active: true,
+      addresses: addresses.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object').map((item) => ({
+        type: demoText(item.type) || 'main', isDefault: item.isDefault !== false,
+        postalCode: demoNullable(item.postalCode, null), street: demoText(item.street),
+        number: demoNullable(item.number, null), complement: demoNullable(item.complement, null),
+        district: demoNullable(item.district, null), city: demoText(item.city),
+        state: demoText(item.state), country: demoText(item.country) || 'BR',
+      })),
+    };
+    demoCustomerRecords.push(customer);
+    demoPosCustomers.push({ id, name: customer.tradeName || customer.legalName });
     persistDemoCustomers();
     demoStatements[id] = emptyStatement(id, legalName);
-    return { id, legalName };
+    return customer;
+  }
+  const addressUpdateMatch = path.match(/^\/master\/customers\/([^/]+)\/addresses$/);
+  if (addressUpdateMatch && method === 'PUT') {
+    const customer = demoCustomerRecords.find(({ id }) => id === addressUpdateMatch[1]);
+    if (!customer) throw new Error('Cliente não encontrado');
+    const body = demoBody(requestBody);
+    customer.addresses = Array.isArray(body.addresses) ? body.addresses as CustomerDetails['addresses'] : [];
+    persistDemoCustomers();
+    return undefined;
   }
   const statementMatch = path.match(/^\/sales\/pos\/customers\/([^/]+)\/statement\?/);
   if (statementMatch) {
@@ -1193,18 +1257,23 @@ function demoText(value: unknown) {
   return typeof value === 'string' || typeof value === 'number' ? `${value}` : '';
 }
 
-function readSavedDemoCustomers() {
-  if (typeof localStorage === 'undefined') return [] as Array<{ id: string; name: string }>;
+function readSavedDemoCustomerRecords() {
+  if (typeof localStorage === 'undefined') return [] as CustomerDetails[];
   try {
-    const saved = JSON.parse(localStorage.getItem('erp:demo-pos-customers') ?? '[]') as unknown;
+    const current = localStorage.getItem('erp:demo-customers-v2');
+    const saved = JSON.parse(current ?? localStorage.getItem('erp:demo-pos-customers') ?? '[]') as unknown;
     return Array.isArray(saved)
-      ? saved.filter(
-          (item): item is { id: string; name: string } =>
-            typeof item === 'object' &&
-            item !== null &&
-            typeof (item as { id?: unknown }).id === 'string' &&
-            typeof (item as { name?: unknown }).name === 'string',
-        )
+      ? saved.flatMap((item): CustomerDetails[] => {
+          if (!item || typeof item !== 'object' || typeof (item as { id?: unknown }).id !== 'string') return [];
+          const source = item as Partial<CustomerDetails> & { name?: unknown };
+          const legalName = typeof source.legalName === 'string' ? source.legalName : typeof source.name === 'string' ? source.name : '';
+          if (!legalName) return [];
+          return [{ id: source.id!, personType: source.personType === 'J' ? 'J' : 'F', taxId: source.taxId ?? null,
+            legalName, tradeName: source.tradeName ?? null, phone: source.phone ?? null,
+            whatsapp: source.whatsapp ?? null, email: source.email ?? null,
+            creditLimit: typeof source.creditLimit === 'string' ? source.creditLimit : '0',
+            active: source.active !== false, addresses: Array.isArray(source.addresses) ? source.addresses : [] }];
+        })
       : [];
   } catch {
     return [];
@@ -1219,6 +1288,13 @@ function persistDemoCustomers() {
       demoPosCustomers.filter(({ id }) => !demoBaseCustomers.some((item) => item.id === id)),
     ),
   );
+  localStorage.setItem('erp:demo-customers-v2', JSON.stringify(
+    demoCustomerRecords.filter(({ id }) => !demoBaseCustomers.some((item) => item.id === id)),
+  ));
+}
+
+function demoNullable(value: unknown, fallback: string | null): string | null {
+  return typeof value === 'string' ? (value.trim() || null) : value === null ? null : fallback;
 }
 
 function emptyStatement(id: string, name: string): CustomerCreditStatement {

@@ -19,6 +19,31 @@ describe('demo customer persistence', () => {
     expect(localStorage.getItem('erp:demo-pos-customers')).toContain('Cliente cadastrado no caixa');
   });
 
+  it('preserves every customer field after save, edit and reload of the listing', () => {
+    const customer = demoResponse('/master/customers', 'POST', JSON.stringify({
+      personType: 'J', taxId: '12345678000199', legalName: 'Cliente Persistente Ltda.',
+      tradeName: 'Cliente Persistente', phone: '85999990000', whatsapp: '85988880000',
+      email: 'cliente.persistente@example.test', creditLimit: '2500.50',
+      addresses: [{ type: 'main', isDefault: true, postalCode: '60123000', street: 'Rua Persistente',
+        number: '77', complement: 'Sala 2', district: 'Centro', city: 'Fortaleza', state: 'CE', country: 'BR' }],
+    })) as { id: string };
+
+    demoResponse(`/master/customers/${customer.id}`, 'PATCH', JSON.stringify({ tradeName: 'Cliente Atualizado' }));
+    const page = demoResponse('/master/customers?page=1&pageSize=20&search=Cliente%20Atualizado') as {
+      items: Array<Record<string, unknown>>;
+    };
+
+    expect(page.items).toContainEqual(expect.objectContaining({
+      id: customer.id, personType: 'J', taxId: '12345678000199',
+      legalName: 'Cliente Persistente Ltda.', tradeName: 'Cliente Atualizado',
+      phone: '85999990000', whatsapp: '85988880000',
+      email: 'cliente.persistente@example.test', creditLimit: '2500.50', active: true,
+    }));
+    expect(localStorage.getItem('erp:demo-customers-v2')).toContain('cliente.persistente@example.test');
+    const details = demoResponse(`/master/customers/${customer.id}`) as { addresses: Array<{ street: string; number: string }> };
+    expect(details.addresses[0]).toMatchObject({ street: 'Rua Persistente', number: '77' });
+  });
+
   it('requires a customer for credit and adds the sale to the customer statement', () => {
     const creditPayment = {
       paymentMethodId: '018f4f12-2222-7222-8222-000000000303',

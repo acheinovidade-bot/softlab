@@ -61,11 +61,8 @@ export class AdminService {
     if (!before) throw new NotFoundException('Filial não encontrada');
     return this.withUniqueConflict(async () => this.prisma.$transaction(async (tx) => {
       if (data.status === 'active' && before.status !== 'active') await this.saas.assertCapacity(tx, auth.companyId, 'branches');
-      const branch = await tx.branch.update({ where: { id }, data: {
-        ...(data.code ? { code: data.code } : {}), ...(data.legalName ? { legalName: data.legalName } : {}),
-        ...(data.tradeName !== undefined ? { tradeName: data.tradeName } : {}), ...(data.taxId ? { taxId: data.taxId } : {}),
-        ...(data.status ? { status: data.status } : {}), updatedAt: new Date(),
-      } });
+      const normalized = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, value === '' ? null : value]));
+      const branch = await tx.branch.update({ where: { id }, data: { ...normalized, updatedAt: new Date() } });
       await this.audit(tx, auth, 'branch.update', 'branch', id, before, branch);
       return branch;
     }));

@@ -37,6 +37,10 @@ export interface BranchSummary {
   tradeName: string | null;
   taxId: string;
   status: string;
+  stateRegistration?: string | null; municipalRegistration?: string | null; taxRegime?: string | null;
+  cnae?: string | null; phone?: string | null; email?: string | null; postalCode?: string | null;
+  street?: string | null; addressNumber?: string | null; complement?: string | null;
+  district?: string | null; city?: string | null; state?: string | null;
 }
 
 export interface FiscalPosTerminalSummary {
@@ -108,6 +112,22 @@ export interface CustomerSummary {
   email: string | null;
   creditLimit: string;
   active: boolean;
+}
+export interface CustomerAddressSummary {
+  id?: string;
+  type: string;
+  isDefault: boolean;
+  postalCode: string | null;
+  street: string;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string;
+  state: string;
+  country: string;
+}
+export interface CustomerDetails extends CustomerSummary {
+  addresses: CustomerAddressSummary[];
 }
 export interface SupplierSummary {
   id: string;

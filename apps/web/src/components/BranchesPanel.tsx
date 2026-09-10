@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { BranchSummary, FiscalPosTerminalSummary } from '@erp/contracts';
+import { useEffect, useRef, useState } from 'react';
+import type { BranchSummary, CnpjSuggestion, FiscalPosTerminalSummary } from '@erp/contracts';
 import { apiRequest } from '../api';
 
 export function BranchesPanel({ canManage }: { canManage: boolean }) {
@@ -8,6 +8,8 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
   const [creating, setCreating] = useState(false);
   const [terminalBranchId, setTerminalBranchId] = useState('');
   const [error, setError] = useState('');
+  const [lookingUp, setLookingUp] = useState(false);
+  const branchFormRef = useRef<HTMLFormElement>(null);
   async function load(): Promise<void> {
     try {
       const [branches, fiscalTerminals] = await Promise.all([
@@ -34,6 +36,14 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
           legalName: data.get('legalName'),
           tradeName: data.get('tradeName') || undefined,
           taxId: data.get('taxId'),
+          stateRegistration: data.get('stateRegistration') || null,
+          municipalRegistration: data.get('municipalRegistration') || null,
+          taxRegime: data.get('taxRegime') || null,
+          cnae: data.get('cnae') || null, phone: data.get('phone') || null,
+          email: data.get('email') || null, postalCode: data.get('postalCode') || null,
+          street: data.get('street') || null, addressNumber: data.get('addressNumber') || null,
+          complement: data.get('complement') || null, district: data.get('district') || null,
+          city: data.get('city') || null, state: data.get('state') || null,
         }),
       });
       await createTerminal(branch.id, data);
@@ -42,6 +52,28 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao salvar');
     }
+  }
+  async function lookupCnpj() {
+    const form = branchFormRef.current;
+    if (!form) return;
+    const rawCnpj = new FormData(form).get('taxId');
+    const cnpj = (typeof rawCnpj === 'string' ? rawCnpj : '').replace(/\D/g, '');
+    if (cnpj.length !== 14) return setError('Informe os 14 dígitos do CNPJ antes da consulta.');
+    setLookingUp(true); setError('Consultando cadastro público da Receita…');
+    try {
+      const result = await apiRequest<CnpjSuggestion>(`/admin/company-profile/cnpj/${cnpj}`);
+      if (!result.found || !result.fields) return setError('CNPJ não localizado. Continue o preenchimento manualmente.');
+      const fields = result.fields;
+      setFormValue(form, 'legalName', fields.legalName); setFormValue(form, 'tradeName', fields.tradeName);
+      setFormValue(form, 'stateRegistration', fields.stateRegistration); setFormValue(form, 'cnae', fields.cnae);
+      setFormValue(form, 'phone', fields.phone); setFormValue(form, 'email', fields.email);
+      setFormValue(form, 'postalCode', fields.address?.postalCode); setFormValue(form, 'street', fields.address?.street);
+      setFormValue(form, 'addressNumber', fields.address?.number); setFormValue(form, 'complement', fields.address?.complement);
+      setFormValue(form, 'district', fields.address?.district); setFormValue(form, 'city', fields.address?.city);
+      setFormValue(form, 'state', fields.address?.state);
+      setError('Dados localizados e preenchidos. Confira a classificação fiscal e salve a filial.');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Falha ao consultar o CNPJ'); }
+    finally { setLookingUp(false); }
   }
   async function createTerminal(branchId: string, data: FormData) {
     await apiRequest('/admin/fiscal-pos-terminals', {
@@ -78,7 +110,7 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
       />
       {error && <div className="error">{error}</div>}
       {creating && (
-        <form className="inline-form" onSubmit={(event) => void create(event)}>
+        <form ref={branchFormRef} className="inline-form" onSubmit={(event) => void create(event)}>
           <label>
             Código
             <input name="code" required />
@@ -93,8 +125,22 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
           </label>
           <label>
             CNPJ
-            <input name="taxId" inputMode="numeric" pattern="\d{14}" required />
+            <span className="cnpj-lookup-field"><input name="taxId" aria-label="CNPJ" inputMode="numeric" pattern="\d{14}" maxLength={14} required onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void lookupCnpj(); } }} /><button type="button" aria-label="Consultar CNPJ na Receita Federal" title="Consultar CNPJ" disabled={lookingUp} onClick={() => void lookupCnpj()}>🔍</button></span>
           </label>
+          <fieldset className="full"><legend>Cadastro fiscal e contato</legend><div className="form-grid">
+            <label>Inscrição estadual<input name="stateRegistration" /></label>
+            <label>Inscrição municipal<input name="municipalRegistration" /></label>
+            <label>CNAE / classificação fiscal<input name="cnae" inputMode="numeric" /></label>
+            <label>Regime tributário<select name="taxRegime"><option value="">Selecione</option><option>Simples Nacional</option><option>Lucro Presumido</option><option>Lucro Real</option><option>MEI</option></select></label>
+            <label>E-mail fiscal<input name="email" type="email" /></label>
+            <label>Telefone<input name="phone" /></label>
+          </div></fieldset>
+          <fieldset className="full"><legend>Endereço da filial</legend><div className="form-grid">
+            <label>CEP<input name="postalCode" inputMode="numeric" maxLength={8} /></label>
+            <label>Logradouro<input name="street" /></label><label>Número<input name="addressNumber" /></label>
+            <label>Complemento<input name="complement" /></label><label>Bairro<input name="district" /></label>
+            <label>Cidade<input name="city" /></label><label>UF<input name="state" maxLength={2} /></label>
+          </div></fieldset>
           <FiscalTerminalFields />
           <div className="form-actions">
             <button type="button" className="quiet" onClick={() => setCreating(false)}>
@@ -175,6 +221,12 @@ export function BranchesPanel({ canManage }: { canManage: boolean }) {
       </div>
     </section>
   );
+}
+
+function setFormValue(form: HTMLFormElement, name: string, value: string | null | undefined) {
+  if (!value) return;
+  const field = form.elements.namedItem(name);
+  if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) field.value = value;
 }
 
 function FiscalTerminalFields() {

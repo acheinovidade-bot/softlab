@@ -106,6 +106,19 @@ model Branch {
   tradeName String?   @map("trade_name") @db.VarChar(200)
   taxId     String    @map("tax_id") @db.VarChar(14)
   status    String    @db.VarChar(20)
+  stateRegistration     String?   @map("state_registration") @db.VarChar(40)
+  municipalRegistration String?   @map("municipal_registration") @db.VarChar(40)
+  taxRegime             String?   @map("tax_regime") @db.VarChar(40)
+  cnae                   String?   @db.VarChar(12)
+  phone                  String?   @db.VarChar(30)
+  email                  String?   @db.VarChar(254)
+  postalCode             String?   @map("postal_code") @db.VarChar(8)
+  street                 String?   @db.VarChar(180)
+  addressNumber          String?   @map("address_number") @db.VarChar(30)
+  complement             String?   @db.VarChar(120)
+  district               String?   @db.VarChar(120)
+  city                   String?   @db.VarChar(120)
+  state                  String?   @db.Char(2)
   createdAt DateTime  @map("created_at") @db.Timestamptz
   updatedAt DateTime  @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
@@ -275,6 +288,25 @@ model AuditLog {
   updatedAt     DateTime @map("updated_at") @db.Timestamptz
 
   @@map("audit_logs")
+}
+
+model ApplicationEventLog {
+  id            String   @id @db.Uuid
+  companyId     String?  @map("company_id") @db.Uuid
+  branchId      String?  @map("branch_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  level         String   @db.VarChar(20)
+  eventType     String   @map("event_type") @db.VarChar(100)
+  message       String   @db.VarChar(1000)
+  context       Json?
+  errorStack    String?  @map("error_stack")
+  correlationId String?  @map("correlation_id") @db.VarChar(128)
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz
+  createdAt     DateTime @map("created_at") @db.Timestamptz
+
+  @@index([companyId, occurredAt], map: "application_event_logs_company_occurred_idx")
+  @@index([level, occurredAt], map: "application_event_logs_level_occurred_idx")
+  @@map("application_event_logs")
 }
 
 model LoginAttempt {

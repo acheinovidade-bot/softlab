@@ -3,6 +3,7 @@ import type {
   BranchSummary,
   CepSuggestion,
   CnpjSuggestion,
+  CustomerDetails,
   CustomerSummary,
   EmployeeSummary,
   PageResult,
@@ -29,7 +30,7 @@ export function CustomersPanel({ canManage }: { canManage: boolean }) {
     pageSize: 20,
   });
   const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<CustomerSummary | null>(null);
+  const [editing, setEditing] = useState<CustomerDetails | null>(null);
   const [error, setError] = useState('');
   const [cnpjSuggestion, setCnpjSuggestion] = useState<CnpjSuggestion | null>(null);
   const [cepSuggestion, setCepSuggestion] = useState<CepSuggestion | null>(null);
@@ -116,10 +117,26 @@ export function CustomersPanel({ canManage }: { canManage: boolean }) {
           creditLimit: data.get('creditLimit') || 0,
         }),
       });
+      await apiRequest(`/master/customers/${editing.id}/addresses`, {
+        method: 'PUT',
+        body: JSON.stringify({ addresses: [{
+          type: 'main', isDefault: true, postalCode: value(data, 'postalCode') ?? null,
+          street: data.get('street'), number: value(data, 'number') ?? null,
+          complement: value(data, 'complement') ?? null, district: value(data, 'district') ?? null,
+          city: data.get('city'), state: data.get('state'), country: 'BR',
+        }] }),
+      });
       setEditing(null);
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Falha ao atualizar cliente');
+    }
+  }
+  async function openEditing(item: CustomerSummary) {
+    try {
+      setEditing(await apiRequest<CustomerDetails>(`/master/customers/${item.id}`));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Falha ao abrir cliente');
     }
   }
   async function lookup(kind: 'cnpj' | 'cep') {
@@ -330,6 +347,13 @@ export function CustomersPanel({ canManage }: { canManage: boolean }) {
           <label>WhatsApp<input name="whatsapp" defaultValue={editing.whatsapp ?? ''} /></label>
           <label>E-mail<input name="email" type="email" defaultValue={editing.email ?? ''} /></label>
           <label>Limite de crédito<input name="creditLimit" type="number" min="0" step="0.01" defaultValue={editing.creditLimit} /></label>
+          <label>CEP<input name="postalCode" inputMode="numeric" defaultValue={editing.addresses[0]?.postalCode ?? ''} /></label>
+          <label>Logradouro<input name="street" required defaultValue={editing.addresses[0]?.street ?? ''} /></label>
+          <label>Número<input name="number" defaultValue={editing.addresses[0]?.number ?? ''} /></label>
+          <label>Bairro<input name="district" defaultValue={editing.addresses[0]?.district ?? ''} /></label>
+          <label>Complemento<input name="complement" defaultValue={editing.addresses[0]?.complement ?? ''} /></label>
+          <label>Cidade<input name="city" required defaultValue={editing.addresses[0]?.city ?? ''} /></label>
+          <label>UF<input name="state" maxLength={2} required defaultValue={editing.addresses[0]?.state ?? ''} /></label>
           <Actions cancel={() => setEditing(null)} label="Salvar alterações" />
         </form>
       )}
@@ -354,7 +378,7 @@ export function CustomersPanel({ canManage }: { canManage: boolean }) {
             <td>
               {canManage && (
                 <div className="row-actions">
-                  <button className="link" onClick={() => setEditing(item)}>Editar</button>
+                  <button className="link" onClick={() => void openEditing(item)}>Editar</button>
                   <button className="link" onClick={() => void toggle(item)}>
                     {item.active ? 'Inativar' : 'Ativar'}
                   </button>
