@@ -12,14 +12,19 @@ describe('AdminShell', () => {
     render(<AdminShell user={demoUser} onLogout={vi.fn()} initialSection="products" />);
 
     const navigation = screen.getByRole('navigation', { name: 'Módulos do sistema' });
-    expect(within(navigation).getByRole('button', { name: 'Pessoas' })).toHaveAttribute('aria-expanded', 'false');
-    expect(within(navigation).getByRole('button', { name: 'Logística' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('searchbox', { name: 'Buscar no menu' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'PDV' })).toBeInTheDocument();
+    expect(within(navigation).getByRole('button', { name: 'Cadastros' })).toHaveAttribute('aria-expanded', 'false');
+    expect(within(navigation).getByRole('button', { name: 'Estoque e Entregas' })).toHaveAttribute('aria-expanded', 'true');
     expect(within(navigation).getByRole('button', { name: 'Produtos' })).toHaveAttribute(
       'aria-current',
       'page',
     );
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Frente de Caixa' }));
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Caixa e PDV' }));
     expect(within(navigation).getByRole('button', { name: 'PDV' })).toBeInTheDocument();
     expect(within(navigation).queryByRole('button', { name: 'Produtos' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Buscar no menu' }), { target: { value: 'cliente' } });
+    expect(within(navigation).getByRole('button', { name: 'Clientes' })).toBeInTheDocument();
+    expect(within(navigation).queryByRole('button', { name: 'PDV' })).not.toBeInTheDocument();
   });
 });

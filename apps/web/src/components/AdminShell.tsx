@@ -69,19 +69,19 @@ const navigationGroups: Array<{
   icon: NavIconName;
   sections: Section[];
 }> = [
-  { label: 'Visão geral', icon: 'chart', sections: ['dashboard'] },
+  { label: 'Início', icon: 'chart', sections: ['dashboard'] },
   {
-    label: 'Pessoas',
+    label: 'Cadastros',
     icon: 'people',
     sections: ['customers', 'suppliers', 'employees', 'returns', 'loyalty'],
   },
   {
-    label: 'Logística',
+    label: 'Estoque e Entregas',
     icon: 'box',
     sections: ['products', 'stock', 'delivery'],
   },
   {
-    label: 'Compras e Produção',
+    label: 'Compras',
     icon: 'cart',
     sections: [
       'purchase-orders',
@@ -92,7 +92,7 @@ const navigationGroups: Array<{
     ],
   },
   {
-    label: 'Comercial',
+    label: 'Vendas',
     icon: 'chart',
     sections: [
       'sales-flow',
@@ -105,7 +105,7 @@ const navigationGroups: Array<{
     ],
   },
   {
-    label: 'Frente de Caixa',
+    label: 'Caixa e PDV',
     icon: 'register',
     sections: [
       'pos',
@@ -145,7 +145,7 @@ const navigationGroups: Array<{
     ],
   },
   {
-    label: 'Ordem de Serviço',
+    label: 'Serviços',
     icon: 'tools',
     sections: [
       'service-orders',
@@ -161,7 +161,7 @@ const navigationGroups: Array<{
     sections: ['reports-summary', 'reports-customers', 'reports-products'],
   },
   {
-    label: 'Configurações',
+    label: 'Administração',
     icon: 'settings',
     sections: [
       'settings',
@@ -363,7 +363,22 @@ export function AdminShell({
     group.items.some(({ id }) => id === section),
   )?.label;
   const [expandedMenu, setExpandedMenu] = useState<string | null>(activeMenu ?? null);
+  const [menuSearch, setMenuSearch] = useState('');
   const activeItem = available.find(({ id }) => id === section);
+  const normalizedSearch = menuSearch.trim().toLocaleLowerCase('pt-BR');
+  const visibleNavigation = normalizedSearch
+    ? groupedNavigation
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) =>
+            `${group.label} ${item.label}`.toLocaleLowerCase('pt-BR').includes(normalizedSearch),
+          ),
+        }))
+        .filter((group) => group.items.length > 0)
+    : groupedNavigation;
+  const quickNavigation = (['dashboard', 'pos', 'sales-flow', 'customers', 'food'] as Section[])
+    .map((id) => available.find((item) => item.id === id))
+    .filter((item): item is NavigationItem => Boolean(item));
   useEffect(() => {
     if (activeMenu) setExpandedMenu(activeMenu);
   }, [activeMenu]);
@@ -378,26 +393,56 @@ export function AdminShell({
             <span>Gestão empresarial</span>
           </div>
         </div>
+        <div className="sidebar-search">
+          <NavIcon name="search" />
+          <input
+            type="search"
+            aria-label="Buscar no menu"
+            placeholder="Buscar tela ou função..."
+            value={menuSearch}
+            onChange={(event) => setMenuSearch(event.target.value)}
+          />
+          {menuSearch && <button type="button" aria-label="Limpar busca" onClick={() => setMenuSearch('')}>×</button>}
+        </div>
+        {quickNavigation.length > 0 && !normalizedSearch && (
+          <div className="sidebar-quick" aria-label="Acessos rápidos">
+            <span>Acessos rápidos</span>
+            <div>
+              {quickNavigation.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={section === item.id ? 'active' : ''}
+                  onClick={() => setSection(item.id)}
+                  title={item.label}
+                >
+                  {quickLabel(item)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <nav aria-label="Módulos do sistema">
-          {groupedNavigation.map((group) => (
+          {visibleNavigation.map((group) => (
             <section className="sidebar-menu" key={group.label}>
               <button
                 type="button"
                 className={`sidebar-menu-toggle ${activeMenu === group.label ? 'has-active' : ''}`}
-                aria-expanded={expandedMenu === group.label}
-                onClick={() =>
-                  setExpandedMenu((current) => (current === group.label ? null : group.label))
-                }
+                aria-expanded={normalizedSearch ? true : expandedMenu === group.label}
+                onClick={() => {
+                  if (group.items.length === 1) setSection(group.items[0]!.id);
+                  else setExpandedMenu((current) => (current === group.label ? null : group.label));
+                }}
               >
                 <span className="sidebar-menu-label">
                   <NavIcon name={group.icon} />
                   {group.label}
                 </span>
                 <span className="menu-chevron" aria-hidden="true">
-                  {expandedMenu === group.label ? '⌃' : '⌄'}
+                  {group.items.length === 1 ? '›' : normalizedSearch || expandedMenu === group.label ? '⌃' : '⌄'}
                 </span>
               </button>
-              {expandedMenu === group.label && (
+              {(normalizedSearch || (group.items.length > 1 && expandedMenu === group.label)) && (
                 <div className="sidebar-menu-items">
                   {group.items.map((item) => (
                     <button
@@ -417,6 +462,7 @@ export function AdminShell({
               )}
             </section>
           ))}
+          {visibleNavigation.length === 0 && <div className="sidebar-no-results">Nenhuma função encontrada.</div>}
         </nav>
         <footer className="sidebar-footer">
           <span className="system-online">
@@ -617,7 +663,8 @@ type NavIconName =
   | 'wallet'
   | 'tools'
   | 'report'
-  | 'settings';
+  | 'settings'
+  | 'search';
 
 function NavIcon({ name }: { name: NavIconName }) {
   const paths: Record<NavIconName, React.ReactNode> = {
@@ -679,6 +726,12 @@ function NavIcon({ name }: { name: NavIconName }) {
         <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
       </>
     ),
+    search: (
+      <>
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-4-4" />
+      </>
+    ),
   };
   return (
     <svg
@@ -694,6 +747,13 @@ function NavIcon({ name }: { name: NavIconName }) {
       {paths[name]}
     </svg>
   );
+}
+
+function quickLabel(item: NavigationItem) {
+  const labels: Partial<Record<Section, string>> = {
+    dashboard: 'Início', pos: 'PDV', 'sales-flow': 'Pedidos', customers: 'Clientes', food: 'Food',
+  };
+  return labels[item.id] ?? item.label;
 }
 
 function initials(name: string) {
