@@ -13,3 +13,8 @@ Quando o checkout perde comunicação:
 Erros de negócio, como estoque insuficiente ou limite de crédito excedido, não são confundidos com queda de conexão. Eles permanecem pendentes com o erro registrado para tratamento, sem serem descartados.
 
 O cache é separado por empresa e filial. Para operação real, o dispositivo deve ser individualizado e protegido por autenticação do sistema operacional, pois a fila pode conter identificadores comerciais locais.
+# Instalador e seleção de modo
+
+O PDV apresenta os botões **Trabalhar online** e **Trabalhar offline**. O modo manual offline impede tentativas de comunicação, mantém as vendas na fila IndexedDB e só sincroniza quando o operador reativa o modo online. Uma queda física de conexão também aciona automaticamente o mesmo fluxo de contingência.
+
+O pacote Windows é gerado por `pnpm windows:installers` em `tools/windows/dist/ERP-Hibrido-Offline-Windows.zip`. Na primeira execução é necessário acessar o servidor uma vez para armazenar o aplicativo, catálogo, formas de pagamento e configurações locais.

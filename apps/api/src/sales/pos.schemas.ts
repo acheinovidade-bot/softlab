@@ -4,11 +4,15 @@ const money = z.coerce.number().min(0).max(999_999_999);
 export const posCheckoutSchema = z
   .object({
     idempotencyKey: z.string().uuid(),
+    terminalId: z.string().uuid().nullable().default(null),
     customerId: z.string().uuid().nullable().default(null),
-    sellerId: z.string().uuid(),
+    sellerId: z.string().uuid().nullable().default(null),
     locationId: z.string().uuid(),
+    surcharge: money.default(0),
+    freight: money.default(0),
     notes: z.string().trim().max(2000).nullable().default(null),
     creditDueDate: z.string().date().nullable().default(null),
+    controlLotExpiryAtPos: z.boolean().default(false),
     items: z
       .array(
         z.object({
@@ -16,6 +20,7 @@ export const posCheckoutSchema = z
           quantity: z.coerce.number().positive().max(999_999),
           unitPrice: money.nullable().default(null),
           discount: money.default(0),
+          lotId: z.string().uuid().nullable().default(null),
         }),
       )
       .min(1)
@@ -25,6 +30,7 @@ export const posCheckoutSchema = z
         z.object({
           paymentMethodId: z.string().uuid(),
           amount: z.coerce.number().positive().max(999_999_999),
+          installments: z.coerce.number().int().min(1).max(48).default(1),
         }),
       )
       .min(1)
@@ -58,3 +64,19 @@ export const receiveCreditSchema = z.object({
   paymentMethodId: z.string().uuid(),
   idempotencyKey: z.string().uuid(),
 });
+
+export const posSettingsSchema = z
+  .object({
+    defaultCustomerId: z.string().uuid().nullable().default(null),
+    sellerMode: z.enum(['default', 'per_sale']).default('default'),
+    defaultSellerId: z.string().uuid().nullable().default(null),
+    defaultLocationId: z.string().uuid(),
+  })
+  .superRefine((value, context) => {
+    if (value.sellerMode === 'default' && !value.defaultSellerId)
+      context.addIssue({
+        code: 'custom',
+        path: ['defaultSellerId'],
+        message: 'Selecione o vendedor padrão',
+      });
+  });

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 import { apiRequest } from '../api';
 import { SalesPanel } from './SalesPanel';
@@ -22,9 +22,10 @@ describe('SalesPanel', () => {
         ) as never,
     );
     render(<SalesPanel canManage={false} canDiscount={false} />);
-    expect(screen.getByRole('heading', { name: 'Vendas e pedidos' })).toBeInTheDocument();
-    expect(await screen.findByText('Nenhum orçamento.')).toBeInTheDocument();
-    expect(screen.getByText('Nenhum pedido.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '+ Novo' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Pedidos de venda' })).toBeInTheDocument();
+    expect(await screen.findByText('Nenhum pedido.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Orçamentos/ }));
+    expect(screen.getByText('Nenhum orçamento.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Lançar novo pedido/ })).not.toBeInTheDocument();
   });
 });

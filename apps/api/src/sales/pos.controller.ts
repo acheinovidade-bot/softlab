@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth.types';
 import { RequireModules } from '../auth/modules.decorator';
@@ -22,6 +22,17 @@ export class PosController {
   ) {
     return this.service.checkout(request.auth, body);
   }
+  @Get('settings') @RequirePermissions('sales.pos.use') settings(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.service.settings(request.auth);
+  }
+  @Put('settings') @RequirePermissions('sales.pos.settings.manage') updateSettings(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.service.updateSettings(request.auth, body);
+  }
   @Get('customers/:customerId/statement') @RequirePermissions('sales.credit.read') statement(
     @Req() request: AuthenticatedRequest,
     @Param('customerId', ParseUUIDPipe) customerId: string,
@@ -37,5 +48,14 @@ export class PosController {
     @Body() body: unknown,
   ) {
     return this.service.receiveCredit(request.auth, receivableId, body);
+  }
+  @Post('customers/:customerId/settlements')
+  @RequirePermissions('sales.credit.receive')
+  receiveCustomerBalance(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.receiveCustomerCredit(request.auth, customerId, body);
   }
 }

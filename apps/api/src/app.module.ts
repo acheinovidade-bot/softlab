@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { PermissionsGuard } from './auth/permissions.guard';
 import { InfrastructureModule } from './infrastructure/infrastructure.module';
 import { correlationIdMiddleware } from './common/correlation-id.middleware';
+import { GlobalExceptionFilter } from './common/http-exception.filter';
 import { validateEnvironment } from './config/environment';
 import { HealthController } from './health/health.controller';
 import { AdminModule } from './admin/admin.module';
@@ -20,6 +21,7 @@ import { SalesModule } from './sales/sales.module';
 import { CashModule } from './cash/cash.module';
 import { FoodModule } from './food/food.module';
 import { FiscalModule } from './fiscal/fiscal.module';
+import { DeliveryModule } from './delivery/delivery.module';
 
 @Module({
   imports: [
@@ -37,9 +39,11 @@ import { FiscalModule } from './fiscal/fiscal.module';
     CashModule,
     FoodModule,
     FiscalModule,
+    DeliveryModule,
   ],
   controllers: [HealthController],
   providers: [
+    GlobalExceptionFilter,
     { provide: APP_GUARD, useClass: AccessTokenGuard },
     { provide: APP_GUARD, useClass: ModulesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },

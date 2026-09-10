@@ -9,6 +9,11 @@ export const fiscalSettingSchema = z.object({
   validUntil: z.coerce.date().nullable().default(null),
 });
 
+export const fiscalIssueSchema = z.object({
+  terminalId: z.string().uuid().nullable().default(null),
+  offline: z.boolean().default(false),
+});
+
 export const nfceGatewayResponseSchema = z.object({
   status: z.literal('authorized'),
   accessKey: z.string().regex(/^\d{44}$/),
@@ -18,4 +23,8 @@ export const nfceGatewayResponseSchema = z.object({
   issuedAt: z.coerce.date(),
   qrCodeUrl: z.string().url(),
   xmlStorageKey: z.string().min(1).nullable().optional(),
+});
+
+export const nfeGatewayResponseSchema = nfceGatewayResponseSchema.extend({
+  qrCodeUrl: z.string().url().nullable().optional(),
 });

@@ -17,5 +17,13 @@ describe('fiscal hub migrations', () => {
     expect(printing).toContain('qr_code_url');
     expect(printing).toContain("'fiscal.nfce.issue'");
     expect(permissions).toContain("'fiscal.settings.manage'");
+    const nfe = readFileSync(
+      resolve(
+        process.cwd(),
+        'prisma/migrations/20260828220000_nfe_sales_force_permission/migration.sql',
+      ),
+      'utf8',
+    );
+    expect(nfe).toContain("'fiscal.nfe.issue'");
   });
 });

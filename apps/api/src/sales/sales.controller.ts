@@ -46,11 +46,23 @@ export class SalesController {
   ) {
     return this.service.listOrders(request.auth, query);
   }
+  @Post('orders') @RequirePermissions('sales.orders.manage') createOrder(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+  ) {
+    return this.service.createOrder(request.auth, body);
+  }
   @Get('orders/:id') @RequirePermissions('sales.orders.read') order(
     @Req() request: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.service.getOrder(request.auth, id);
+  }
+  @Get('customers/:id/insights') @RequirePermissions('sales.orders.read') customerInsights(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.service.customerInsights(request.auth, id);
   }
   @Put('orders/:id/allocation') @RequirePermissions('sales.orders.manage') allocate(
     @Req() request: AuthenticatedRequest,

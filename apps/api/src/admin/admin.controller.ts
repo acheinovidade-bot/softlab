@@ -4,13 +4,30 @@ import type { AuthenticatedRequest } from '../auth/auth.types';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { AdminService } from './admin.service';
 import { RequireModules } from '../auth/modules.decorator';
+import { CustomerEnrichmentService } from '../master-data/customer-enrichment.service';
 
 @ApiTags('admin')
 @ApiBearerAuth()
 @Controller('admin')
 @RequireModules('core')
 export class AdminController {
-  constructor(private readonly admin: AdminService) {}
+  constructor(private readonly admin: AdminService, private readonly enrichment: CustomerEnrichmentService) {}
+
+  @Get('company-profile')
+  @RequirePermissions('admin.branches.read')
+  getCompanyProfile(@Req() request: AuthenticatedRequest) { return this.admin.getCompanyProfile(request.auth); }
+
+  @Put('company-profile')
+  @RequirePermissions('admin.branches.manage')
+  updateCompanyProfile(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.admin.updateCompanyProfile(request.auth, body);
+  }
+
+  @Get('company-profile/cnpj/:cnpj')
+  @RequirePermissions('admin.branches.manage')
+  lookupCompanyCnpj(@Req() request: AuthenticatedRequest, @Param('cnpj') cnpj: string) {
+    return this.enrichment.lookupCnpj(request.auth, cnpj);
+  }
 
   @Get('subscription')
   @RequirePermissions('admin.subscription.read')
@@ -24,6 +41,16 @@ export class AdminController {
   @RequirePermissions('admin.branches.manage')
   @ApiOperation({ summary: 'Cria uma filial na empresa atual' })
   createBranch(@Req() request: AuthenticatedRequest, @Body() body: unknown) { return this.admin.createBranch(request.auth, body); }
+
+  @Get('fiscal-pos-terminals')
+  @RequirePermissions('admin.branches.read')
+  listFiscalPosTerminals(@Req() request: AuthenticatedRequest) { return this.admin.listFiscalPosTerminals(request.auth); }
+
+  @Post('fiscal-pos-terminals')
+  @RequirePermissions('admin.branches.manage')
+  createFiscalPosTerminal(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.admin.createFiscalPosTerminal(request.auth, body);
+  }
 
   @Patch('branches/:id')
   @RequirePermissions('admin.branches.manage')

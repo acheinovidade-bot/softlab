@@ -14,7 +14,7 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
   app.enableCors({ origin: env.CORS_ORIGINS.split(',').map((origin) => origin.trim()), credentials: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
-  app.useGlobalFilters(new GlobalExceptionFilter());
+  app.useGlobalFilters(app.get(GlobalExceptionFilter));
   if (env.SWAGGER_ENABLED) {
     const config = new DocumentBuilder().setTitle('ERP Híbrido API').setVersion('1.0').build();
     SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, config));

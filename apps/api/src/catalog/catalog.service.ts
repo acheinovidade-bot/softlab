@@ -1,30 +1,438 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { z } from 'zod';
 import type { AccessTokenPayload } from '../auth/auth.types';
 import { uuidV7 } from '../common/uuid-v7';
 import { PrismaService } from '../infrastructure/database/prisma.service';
-import { branchSettingSchema, catalogListSchema, createLookupSchema, createProductSchema, lookupKindSchema, priceSchema, updateProductSchema } from './catalog.schemas';
+import {
+  branchSettingSchema,
+  catalogListSchema,
+  createLookupSchema,
+  createProductSchema,
+  lookupKindSchema,
+  priceSchema,
+  updateProductSchema,
+} from './catalog.schemas';
 
 @Injectable()
 export class CatalogService {
   constructor(private readonly prisma: PrismaService) {}
-  async lookups(auth: AccessTokenPayload) { const where = { companyId: auth.companyId, active: true }; const [groups, categories, brands, units, priceTables, branches] = await Promise.all([this.prisma.productGroup.findMany({ where: { ...where, deletedAt: null }, orderBy: { name: 'asc' } }), this.prisma.productCategory.findMany({ where: { ...where, deletedAt: null }, orderBy: { name: 'asc' } }), this.prisma.brand.findMany({ where: { ...where, deletedAt: null }, orderBy: { name: 'asc' } }), this.prisma.unit.findMany({ where, orderBy: { name: 'asc' } }), this.prisma.priceTable.findMany({ where, orderBy: { name: 'asc' } }), this.prisma.branch.findMany({ where: { companyId: auth.companyId, status: 'active', deletedAt: null }, orderBy: { code: 'asc' } })]); return { groups, categories, brands, units, priceTables, branches }; }
-  async createLookup(auth: AccessTokenPayload, kindInput: string, input: unknown) { const kind = lookupKindSchema.parse(kindInput); const data = createLookupSchema.parse(input); const now = new Date(); return this.unique(async () => { if (kind === 'groups') return this.prisma.productGroup.create({ data: { id: uuidV7(), companyId: auth.companyId, name: data.name, active: true, createdAt: now, updatedAt: now } }); if (kind === 'categories') { if (data.parentId && !(await this.prisma.productCategory.findFirst({ where: { id: data.parentId, companyId: auth.companyId, deletedAt: null } }))) throw new NotFoundException('Categoria pai não encontrada'); return this.prisma.productCategory.create({ data: { id: uuidV7(), companyId: auth.companyId, parentId: data.parentId ?? null, name: data.name, active: true, createdAt: now, updatedAt: now } }); } if (kind === 'brands') return this.prisma.brand.create({ data: { id: uuidV7(), companyId: auth.companyId, name: data.name, active: true, createdAt: now, updatedAt: now } }); if (kind === 'units') return this.prisma.unit.create({ data: { id: uuidV7(), companyId: auth.companyId, code: data.code ?? data.name.slice(0, 12).toUpperCase(), name: data.name, decimalPlaces: data.decimalPlaces ?? 3, createdAt: now, updatedAt: now } }); return this.prisma.priceTable.create({ data: { id: uuidV7(), companyId: auth.companyId, code: data.code ?? data.name.slice(0, 40).toUpperCase(), name: data.name, active: true, createdAt: now, updatedAt: now } }); }); }
-  async list(auth: AccessTokenPayload, query: unknown) { const page = catalogListSchema.parse(query); const where: Prisma.ProductWhereInput = { companyId: auth.companyId, deletedAt: null, ...(page.status === 'all' ? {} : { active: page.status === 'active' }), ...(page.search ? { OR: [{ code: { contains: page.search, mode: 'insensitive' } }, { description: { contains: page.search, mode: 'insensitive' } }, { barcode: { contains: page.search } }, { reference: { contains: page.search, mode: 'insensitive' } }] } : {}) }; const [products, total] = await Promise.all([this.prisma.product.findMany({ where, orderBy: { description: 'asc' }, skip: (page.page - 1) * page.pageSize, take: page.pageSize }), this.prisma.product.count({ where })]); const prices = await this.currentPrices(auth.companyId, products.map(({ id }) => id)); return { items: products.map((product) => ({ ...product, price: this.visiblePrice(auth, prices.find(({ productId }) => productId === product.id)) })), total, page: page.page, pageSize: page.pageSize }; }
-  async get(auth: AccessTokenPayload, id: string) { const product = await this.product(auth.companyId, id); const [prices, branchSettings] = await Promise.all([this.currentPrices(auth.companyId, [id]), this.prisma.productBranchSetting.findMany({ where: { companyId: auth.companyId, productId: id } })]); return { ...product, prices: prices.map((price) => this.visiblePrice(auth, price)), branchSettings }; }
-  async create(auth: AccessTokenPayload, input: unknown) { const { price, branchSettings, ...data } = createProductSchema.parse(input); await this.targets(auth.companyId, data, price, branchSettings); return this.unique(async () => this.prisma.$transaction(async (tx) => { const now = new Date(); const product = await tx.product.create({ data: { id: uuidV7(), companyId: auth.companyId, imageStorageKey: null, ...data, deliveryPrice: data.deliveryPrice === null ? null : new Prisma.Decimal(data.deliveryPrice), taxProfile: data.taxProfile === null ? Prisma.JsonNull : data.taxProfile as Prisma.InputJsonValue, createdAt: now, updatedAt: now } }); await tx.productPrice.create({ data: this.priceData(auth.companyId, product.id, price, now) }); await tx.productBranchSetting.createMany({ data: branchSettings.map((setting) => this.settingData(auth.companyId, product.id, setting, now)) }); await this.audit(tx, auth, 'product.create', product.id, null, { ...product, price, branchSettings }); return product; })); }
-  async update(auth: AccessTokenPayload, id: string, input: unknown) { const data = updateProductSchema.parse(input); const before = await this.product(auth.companyId, id); if ((data.controlsExpiry ?? before.controlsExpiry) && !(data.controlsLot ?? before.controlsLot)) throw new BadRequestException('Controle de validade exige controle de lote'); await this.targets(auth.companyId, { ...before, ...data }, null, []); const update = this.defined({ ...data, ...(data.deliveryPrice === undefined ? {} : { deliveryPrice: data.deliveryPrice === null ? null : new Prisma.Decimal(data.deliveryPrice) }), ...(data.taxProfile === undefined ? {} : { taxProfile: data.taxProfile === null ? Prisma.JsonNull : data.taxProfile }), updatedAt: new Date() }) as Prisma.ProductUncheckedUpdateInput; return this.unique(async () => this.prisma.$transaction(async (tx) => { const after = await tx.product.update({ where: { id }, data: update }); await this.audit(tx, auth, 'product.update', id, before, after); return after; })); }
-  async addPrice(auth: AccessTokenPayload, id: string, input: unknown) { const price = priceSchema.parse(input); await this.product(auth.companyId, id); await this.targets(auth.companyId, {}, price, []); return this.prisma.$transaction(async (tx) => { const now = new Date(); await tx.productPrice.updateMany({ where: { companyId: auth.companyId, productId: id, priceTableId: price.priceTableId, branchId: price.branchId, validUntil: null }, data: { validUntil: now, updatedAt: now } }); const created = await tx.productPrice.create({ data: this.priceData(auth.companyId, id, price, now) }); await this.audit(tx, auth, 'product.price.create', id, null, price); return this.visiblePrice(auth, created); }); }
-  async replaceSettings(auth: AccessTokenPayload, id: string, input: unknown) { const settings = branchSettingSchema.array().max(100).parse(input); await this.product(auth.companyId, id); await this.targets(auth.companyId, {}, null, settings); await this.prisma.$transaction(async (tx) => { const before = await tx.productBranchSetting.findMany({ where: { companyId: auth.companyId, productId: id } }); await tx.productBranchSetting.deleteMany({ where: { companyId: auth.companyId, productId: id } }); const now = new Date(); await tx.productBranchSetting.createMany({ data: settings.map((setting) => this.settingData(auth.companyId, id, setting, now)) }); await this.audit(tx, auth, 'product.settings.replace', id, before, settings); }); }
-  private async targets(companyId: string, product: Record<string, unknown>, price: { priceTableId: string; branchId: string | null } | null, settings: Array<{ branchId: string }>) { const [group, category, brand, unit] = await Promise.all([typeof product.groupId === 'string' ? this.prisma.productGroup.findFirst({ where: { id: product.groupId, companyId, active: true, deletedAt: null } }) : true, typeof product.categoryId === 'string' ? this.prisma.productCategory.findFirst({ where: { id: product.categoryId, companyId, active: true, deletedAt: null } }) : true, typeof product.brandId === 'string' ? this.prisma.brand.findFirst({ where: { id: product.brandId, companyId, active: true, deletedAt: null } }) : true, typeof product.unitId === 'string' ? this.prisma.unit.findFirst({ where: { id: product.unitId, companyId } }) : true]); if (!group || !category || !brand || !unit) throw new NotFoundException('Classificação do produto fora da empresa'); if (price) { if (!(await this.prisma.priceTable.findFirst({ where: { id: price.priceTableId, companyId, active: true } }))) throw new NotFoundException('Tabela de preço não encontrada'); if (price.branchId) settings = [...settings, { branchId: price.branchId }]; } const branchIds = [...new Set(settings.map(({ branchId }) => branchId))]; if (branchIds.length && await this.prisma.branch.count({ where: { companyId, id: { in: branchIds }, status: 'active', deletedAt: null } }) !== branchIds.length) throw new NotFoundException('Filial fora da empresa'); }
-  private currentPrices(companyId: string, productIds: string[]) { return this.prisma.productPrice.findMany({ where: { companyId, productId: { in: productIds }, branchId: null, validUntil: null }, orderBy: { validFrom: 'desc' } }); }
-  private visiblePrice(auth: AccessTokenPayload, price: { cost: Prisma.Decimal; [key: string]: unknown } | undefined) { if (!price) return null; if (auth.permissions.includes('catalog.cost.read')) return price; const visible: Record<string, unknown> = { ...price }; delete visible.cost; return visible; }
-  private priceData(companyId: string, productId: string, price: z.infer<typeof priceSchema>, now: Date): Prisma.ProductPriceUncheckedCreateInput { return { id: uuidV7(), companyId, productId, priceTableId: price.priceTableId, branchId: price.branchId, cost: new Prisma.Decimal(price.cost), salePrice: new Prisma.Decimal(price.salePrice), minimumPrice: price.minimumPrice === null ? null : new Prisma.Decimal(price.minimumPrice), commissionRate: new Prisma.Decimal(price.commissionRate), validFrom: now, validUntil: null, createdAt: now, updatedAt: now }; }
-  private settingData(companyId: string, productId: string, setting: z.infer<typeof branchSettingSchema>, now: Date): Prisma.ProductBranchSettingUncheckedCreateInput { return { id: uuidV7(), companyId, productId, branchId: setting.branchId, minimumStock: new Prisma.Decimal(setting.minimumStock), maximumStock: setting.maximumStock === null ? null : new Prisma.Decimal(setting.maximumStock), locationLabel: setting.locationLabel, active: setting.active, createdAt: now, updatedAt: now }; }
-  private async product(companyId: string, id: string) { const product = await this.prisma.product.findFirst({ where: { id, companyId, deletedAt: null } }); if (!product) throw new NotFoundException('Produto não encontrado'); return product; }
-  private async audit(tx: Prisma.TransactionClient, auth: AccessTokenPayload, action: string, entityId: string, before: unknown, after: unknown) { const now = new Date(); await tx.auditLog.create({ data: { id: uuidV7(), companyId: auth.companyId, branchId: auth.branchId, userId: auth.sub, action, entityType: 'product', entityId, ...(before === null ? {} : { beforeData: this.json(before) }), ...(after === null ? {} : { afterData: this.json(after) }), occurredAt: now, createdAt: now, updatedAt: now } }); }
-  private json(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }
-  private defined<T extends object>(value: T): Record<string, unknown> { return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)); }
-  private async unique<T>(operation: () => Promise<T>) { try { return await operation(); } catch (error) { if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Código, código de barras ou classificação já cadastrada'); throw error; } }
+  async lookups(auth: AccessTokenPayload) {
+    const where = { companyId: auth.companyId, active: true };
+    const [groups, categories, brands, units, priceTables, branches] = await Promise.all([
+      this.prisma.productGroup.findMany({
+        where: { ...where, deletedAt: null },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.productCategory.findMany({
+        where: { ...where, deletedAt: null },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.brand.findMany({
+        where: { ...where, deletedAt: null },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.unit.findMany({ where, orderBy: { name: 'asc' } }),
+      this.prisma.priceTable.findMany({ where, orderBy: { name: 'asc' } }),
+      this.prisma.branch.findMany({
+        where: { companyId: auth.companyId, status: 'active', deletedAt: null },
+        orderBy: { code: 'asc' },
+      }),
+    ]);
+    return { groups, categories, brands, units, priceTables, branches };
+  }
+  async createLookup(auth: AccessTokenPayload, kindInput: string, input: unknown) {
+    const kind = lookupKindSchema.parse(kindInput);
+    const data = createLookupSchema.parse(input);
+    const now = new Date();
+    return this.unique(async () => {
+      if (kind === 'groups')
+        return this.prisma.productGroup.create({
+          data: {
+            id: uuidV7(),
+            companyId: auth.companyId,
+            name: data.name,
+            active: true,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+      if (kind === 'categories') {
+        if (
+          data.parentId &&
+          !(await this.prisma.productCategory.findFirst({
+            where: { id: data.parentId, companyId: auth.companyId, deletedAt: null },
+          }))
+        )
+          throw new NotFoundException('Categoria pai não encontrada');
+        return this.prisma.productCategory.create({
+          data: {
+            id: uuidV7(),
+            companyId: auth.companyId,
+            parentId: data.parentId ?? null,
+            name: data.name,
+            active: true,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+      }
+      if (kind === 'brands')
+        return this.prisma.brand.create({
+          data: {
+            id: uuidV7(),
+            companyId: auth.companyId,
+            name: data.name,
+            active: true,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+      if (kind === 'units')
+        return this.prisma.unit.create({
+          data: {
+            id: uuidV7(),
+            companyId: auth.companyId,
+            code: data.code ?? data.name.slice(0, 12).toUpperCase(),
+            name: data.name,
+            decimalPlaces: data.decimalPlaces ?? 3,
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+      return this.prisma.priceTable.create({
+        data: {
+          id: uuidV7(),
+          companyId: auth.companyId,
+          code: data.code ?? data.name.slice(0, 40).toUpperCase(),
+          name: data.name,
+          active: true,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    });
+  }
+  async list(auth: AccessTokenPayload, query: unknown) {
+    const page = catalogListSchema.parse(query);
+    const where: Prisma.ProductWhereInput = {
+      companyId: auth.companyId,
+      deletedAt: null,
+      ...(page.status === 'all' ? {} : { active: page.status === 'active' }),
+      ...(page.search
+        ? {
+            OR: [
+              { code: { contains: page.search, mode: 'insensitive' } },
+              { description: { contains: page.search, mode: 'insensitive' } },
+              { barcode: { contains: page.search } },
+              { reference: { contains: page.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const [products, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        orderBy: { description: 'asc' },
+        skip: (page.page - 1) * page.pageSize,
+        take: page.pageSize,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+    const prices = await this.currentPrices(
+      auth.companyId,
+      products.map(({ id }) => id),
+    );
+    return {
+      items: products.map((product) => ({
+        ...product,
+        price: this.visiblePrice(
+          auth,
+          prices.find(({ productId }) => productId === product.id),
+        ),
+      })),
+      total,
+      page: page.page,
+      pageSize: page.pageSize,
+    };
+  }
+  async get(auth: AccessTokenPayload, id: string) {
+    const product = await this.product(auth.companyId, id);
+    const [prices, branchSettings] = await Promise.all([
+      this.currentPrices(auth.companyId, [id]),
+      this.prisma.productBranchSetting.findMany({
+        where: { companyId: auth.companyId, productId: id },
+      }),
+    ]);
+    return {
+      ...product,
+      prices: prices.map((price) => this.visiblePrice(auth, price)),
+      branchSettings,
+    };
+  }
+  async create(auth: AccessTokenPayload, input: unknown) {
+    const { price, branchSettings, ...data } = createProductSchema.parse(input);
+    await this.targets(auth.companyId, data, price, branchSettings);
+    return this.unique(async () =>
+      this.prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const product = await tx.product.create({
+          data: {
+            id: uuidV7(),
+            companyId: auth.companyId,
+            imageStorageKey: null,
+            ...data,
+            deliveryPrice:
+              data.deliveryPrice === null ? null : new Prisma.Decimal(data.deliveryPrice),
+            taxProfile:
+              data.taxProfile === null
+                ? Prisma.JsonNull
+                : (data.taxProfile as Prisma.InputJsonValue),
+            createdAt: now,
+            updatedAt: now,
+          },
+        });
+        await tx.productPrice.create({
+          data: this.priceData(auth.companyId, product.id, price, now),
+        });
+        await tx.productBranchSetting.createMany({
+          data: branchSettings.map((setting) =>
+            this.settingData(auth.companyId, product.id, setting, now),
+          ),
+        });
+        await this.audit(tx, auth, 'product.create', product.id, null, {
+          ...product,
+          price,
+          branchSettings,
+        });
+        return product;
+      }),
+    );
+  }
+  async update(auth: AccessTokenPayload, id: string, input: unknown) {
+    const data = updateProductSchema.parse(input);
+    const before = await this.product(auth.companyId, id);
+    if ((data.controlsExpiry ?? before.controlsExpiry) && !(data.controlsLot ?? before.controlsLot))
+      throw new BadRequestException('Controle de validade exige controle de lote');
+    if ((data.selectLotAtPos ?? before.selectLotAtPos) && !(data.controlsLot ?? before.controlsLot))
+      throw new BadRequestException('Seleção de lote no PDV exige controle de lote');
+    await this.targets(auth.companyId, { ...before, ...data }, null, []);
+    const update = this.defined({
+      ...data,
+      ...(data.deliveryPrice === undefined
+        ? {}
+        : {
+            deliveryPrice:
+              data.deliveryPrice === null ? null : new Prisma.Decimal(data.deliveryPrice),
+          }),
+      ...(data.taxProfile === undefined
+        ? {}
+        : { taxProfile: data.taxProfile === null ? Prisma.JsonNull : data.taxProfile }),
+      updatedAt: new Date(),
+    }) as Prisma.ProductUncheckedUpdateInput;
+    return this.unique(async () =>
+      this.prisma.$transaction(async (tx) => {
+        const after = await tx.product.update({ where: { id }, data: update });
+        await this.audit(tx, auth, 'product.update', id, before, after);
+        return after;
+      }),
+    );
+  }
+  async addPrice(auth: AccessTokenPayload, id: string, input: unknown) {
+    const price = priceSchema.parse(input);
+    await this.product(auth.companyId, id);
+    await this.targets(auth.companyId, {}, price, []);
+    return this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.productPrice.updateMany({
+        where: {
+          companyId: auth.companyId,
+          productId: id,
+          priceTableId: price.priceTableId,
+          branchId: price.branchId,
+          validUntil: null,
+        },
+        data: { validUntil: now, updatedAt: now },
+      });
+      const created = await tx.productPrice.create({
+        data: this.priceData(auth.companyId, id, price, now),
+      });
+      await this.audit(tx, auth, 'product.price.create', id, null, price);
+      return this.visiblePrice(auth, created);
+    });
+  }
+  async replaceSettings(auth: AccessTokenPayload, id: string, input: unknown) {
+    const settings = branchSettingSchema.array().max(100).parse(input);
+    await this.product(auth.companyId, id);
+    await this.targets(auth.companyId, {}, null, settings);
+    await this.prisma.$transaction(async (tx) => {
+      const before = await tx.productBranchSetting.findMany({
+        where: { companyId: auth.companyId, productId: id },
+      });
+      await tx.productBranchSetting.deleteMany({
+        where: { companyId: auth.companyId, productId: id },
+      });
+      const now = new Date();
+      await tx.productBranchSetting.createMany({
+        data: settings.map((setting) => this.settingData(auth.companyId, id, setting, now)),
+      });
+      await this.audit(tx, auth, 'product.settings.replace', id, before, settings);
+    });
+  }
+  private async targets(
+    companyId: string,
+    product: Record<string, unknown>,
+    price: { priceTableId: string; branchId: string | null } | null,
+    settings: Array<{ branchId: string }>,
+  ) {
+    const [group, category, brand, unit] = await Promise.all([
+      typeof product.groupId === 'string'
+        ? this.prisma.productGroup.findFirst({
+            where: { id: product.groupId, companyId, active: true, deletedAt: null },
+          })
+        : true,
+      typeof product.categoryId === 'string'
+        ? this.prisma.productCategory.findFirst({
+            where: { id: product.categoryId, companyId, active: true, deletedAt: null },
+          })
+        : true,
+      typeof product.brandId === 'string'
+        ? this.prisma.brand.findFirst({
+            where: { id: product.brandId, companyId, active: true, deletedAt: null },
+          })
+        : true,
+      typeof product.unitId === 'string'
+        ? this.prisma.unit.findFirst({ where: { id: product.unitId, companyId } })
+        : true,
+    ]);
+    if (!group || !category || !brand || !unit)
+      throw new NotFoundException('Classificação do produto fora da empresa');
+    if (price) {
+      if (
+        !(await this.prisma.priceTable.findFirst({
+          where: { id: price.priceTableId, companyId, active: true },
+        }))
+      )
+        throw new NotFoundException('Tabela de preço não encontrada');
+      if (price.branchId) settings = [...settings, { branchId: price.branchId }];
+    }
+    const branchIds = [...new Set(settings.map(({ branchId }) => branchId))];
+    if (
+      branchIds.length &&
+      (await this.prisma.branch.count({
+        where: { companyId, id: { in: branchIds }, status: 'active', deletedAt: null },
+      })) !== branchIds.length
+    )
+      throw new NotFoundException('Filial fora da empresa');
+  }
+  private currentPrices(companyId: string, productIds: string[]) {
+    return this.prisma.productPrice.findMany({
+      where: { companyId, productId: { in: productIds }, branchId: null, validUntil: null },
+      orderBy: { validFrom: 'desc' },
+    });
+  }
+  private visiblePrice(
+    auth: AccessTokenPayload,
+    price: { cost: Prisma.Decimal; [key: string]: unknown } | undefined,
+  ) {
+    if (!price) return null;
+    if (auth.permissions.includes('catalog.cost.read')) return price;
+    const visible: Record<string, unknown> = { ...price };
+    delete visible.cost;
+    return visible;
+  }
+  private priceData(
+    companyId: string,
+    productId: string,
+    price: z.infer<typeof priceSchema>,
+    now: Date,
+  ): Prisma.ProductPriceUncheckedCreateInput {
+    return {
+      id: uuidV7(),
+      companyId,
+      productId,
+      priceTableId: price.priceTableId,
+      branchId: price.branchId,
+      cost: new Prisma.Decimal(price.cost),
+      salePrice: new Prisma.Decimal(price.salePrice),
+      minimumPrice: price.minimumPrice === null ? null : new Prisma.Decimal(price.minimumPrice),
+      commissionRate: new Prisma.Decimal(price.commissionRate),
+      validFrom: now,
+      validUntil: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  private settingData(
+    companyId: string,
+    productId: string,
+    setting: z.infer<typeof branchSettingSchema>,
+    now: Date,
+  ): Prisma.ProductBranchSettingUncheckedCreateInput {
+    return {
+      id: uuidV7(),
+      companyId,
+      productId,
+      branchId: setting.branchId,
+      minimumStock: new Prisma.Decimal(setting.minimumStock),
+      maximumStock: setting.maximumStock === null ? null : new Prisma.Decimal(setting.maximumStock),
+      locationLabel: setting.locationLabel,
+      active: setting.active,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+  private async product(companyId: string, id: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { id, companyId, deletedAt: null },
+    });
+    if (!product) throw new NotFoundException('Produto não encontrado');
+    return product;
+  }
+  private async audit(
+    tx: Prisma.TransactionClient,
+    auth: AccessTokenPayload,
+    action: string,
+    entityId: string,
+    before: unknown,
+    after: unknown,
+  ) {
+    const now = new Date();
+    await tx.auditLog.create({
+      data: {
+        id: uuidV7(),
+        companyId: auth.companyId,
+        branchId: auth.branchId,
+        userId: auth.sub,
+        action,
+        entityType: 'product',
+        entityId,
+        ...(before === null ? {} : { beforeData: this.json(before) }),
+        ...(after === null ? {} : { afterData: this.json(after) }),
+        occurredAt: now,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  }
+  private json(value: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+  }
+  private defined<T extends object>(value: T): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+  }
+  private async unique<T>(operation: () => Promise<T>) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new ConflictException('Código, código de barras ou classificação já cadastrada');
+      throw error;
+    }
+  }
 }
